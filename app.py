@@ -1,5 +1,6 @@
 import streamlit as st
 import sqlite3
+import pandas as pd
 from datetime import datetime
 from google import genai
 from google.genai import types
@@ -639,16 +640,60 @@ elif user["role"] == "teacher":
         else:
             st.info("Không có bài nộp nào để hiển thị.")
 
+    # TAB 3: QUẢN LÝ & CẤP TÀI KHOẢN HỌC SINH
     with t_tab3:
-        col_add, col_remove = st.columns(2)
+        st.markdown("### 📂 Cấp tài khoản hàng loạt từ file Excel")
+        st.caption("File Excel chỉ cần có 2 cột bất kỳ (Cột 1 là Mã học sinh/Username, Cột 2 là Họ và tên học sinh). Mật khẩu mặc định tạo ra sẽ là: 123456")
         
+        uploaded_excel = st.file_uploader("Chọn file Excel danh sách học sinh (.xlsx, .xls):", type=["xlsx", "xls"])
+        
+        if uploaded_excel is not None:
+            try:
+                import pandas as pd
+                df = pd.read_excel(uploaded_excel)
+                if df.shape[1] < 2:
+                    st.error("File Excel cần có ít nhất 2 cột: Cột 1 là Mã HS và Cột 2 là Họ tên.")
+                else:
+                    st.write("👀 **Xem trước dữ liệu trích xuất từ file Excel:**")
+                    preview_df = df.iloc[:, :2].dropna()
+                    preview_df.columns = ["Mã học sinh", "Họ và tên"]
+                    st.dataframe(preview_df.head(10), use_container_width=True)
+                    
+                    if st.button("🚀 Xác nhận tạo tài khoản cho toàn bộ danh sách trên", type="primary"):
+                        created_count = 0
+                        skipped_count = 0
+                        
+                        for _, row in preview_df.iterrows():
+                            u_code = str(row["Mã học sinh"]).strip()
+                            # Loại bỏ số thập phân nếu mã bị định dạng dạng số thực trong Excel (ví dụ 101.0 -> 101)
+                            if u_code.endswith(".0"):
+                                u_code = u_code[:-2]
+                            fullname = str(row["Họ và tên"]).strip()
+                            
+                            if u_code and fullname and u_code != "nan" and fullname != "nan":
+                                try:
+                                    c.execute("INSERT INTO users VALUES (?, '123456', ?, 'student')", (u_code, fullname))
+                                    created_count += 1
+                                except sqlite3.IntegrityError:
+                                    # Trùng username đã có trong database
+                                    skipped_count += 1
+                                    
+                        conn.commit()
+                        st.success(f"🎉 Hoàn tất! Đã thêm thành công **{created_count}** tài khoản mới. (Bỏ qua {skipped_count} tài khoản bị trùng lặp mã).")
+                        st.rerun()
+            except Exception as ex:
+                st.error(f"Lỗi khi đọc file Excel: {str(ex)}")
+
+        st.markdown("---")
+        
+        col_add, col_remove = st.columns(2)
         with col_add:
-            st.markdown("### ➕ Cấp tài khoản mới")
+            st.markdown("### ➕ Thêm thủ công từng học sinh")
             with st.form("add_user_form"):
                 new_u = st.text_input("Tên đăng nhập (Username):", placeholder="Ví dụ: hs04")
                 new_p = st.text_input("Mật khẩu ban đầu:", value="123456")
                 new_name = st.text_input("Họ và tên học sinh:", placeholder="Ví dụ: Hoàng Minh Đức")
-                submit_btn = st.form_submit_button("Thêm học sinh vào danh sách", type="primary")
+                submit_btn = st.form_submit_button("Thêm học sinh này", type="primary")
                 if submit_btn:
                     if new_u and new_p and new_name:
                         try:
