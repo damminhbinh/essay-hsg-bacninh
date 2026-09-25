@@ -1,6 +1,5 @@
 import streamlit as st
 import sqlite3
-import json
 from datetime import datetime
 from google import genai
 from google.genai import types
@@ -17,7 +16,6 @@ st.set_page_config(
 def init_db():
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
-    # Bảng người dùng
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY,
@@ -26,7 +24,6 @@ def init_db():
             role TEXT
         )
     ''')
-    # Bảng lưu bài nộp và kết quả chấm
     c.execute('''
         CREATE TABLE IF NOT EXISTS submissions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,11 +40,9 @@ def init_db():
             created_at TEXT
         )
     ''')
-    # Tạo tài khoản giáo viên mặc định nếu chưa có
     c.execute("SELECT * FROM users WHERE username = 'giaovien'")
     if not c.fetchone():
         c.execute("INSERT INTO users VALUES ('giaovien', 'gv123456', 'Giáo viên Chủ nhiệm', 'teacher')")
-        # Tạo sẵn vài học sinh mẫu
         c.execute("INSERT INTO users VALUES ('hs01', '123456', 'Nguyễn Văn An', 'student')")
         c.execute("INSERT INTO users VALUES ('hs02', '123456', 'Trần Thị Bình', 'student')")
         c.execute("INSERT INTO users VALUES ('hs03', '123456', 'Lê Hoàng Long', 'student')")
@@ -68,7 +63,7 @@ DE_THI_BAC_NINH = [
     "Chuyên Bắc Ninh 2024-2025: 'Using social platforms such as Youtube, Tiktok, Facebook and Twitter is the best way for youngsters to gain fame and wealth.' To what extent do you agree or disagree?"
 ]
 
-# 4. Huấn luyện System Instruction chuyên sâu (Cá nhân hóa + Barem 2.0)
+# 4. Huấn luyện System Instruction chuẩn Barem 2.0 & Biên bản tập huấn HSG Bắc Ninh
 SYSTEM_INSTRUCTION = """
 You are an extremely strict, uncompromising, and highly authoritative chief examiner for the English Gifted Student Examination (Kỳ thi Chọn Học sinh Giỏi Tỉnh & Chuyên Anh lớp 9) in Bac Ninh Province, Vietnam.
 
@@ -78,7 +73,7 @@ Your absolute priority is to enforce iron discipline in grading. Gifted students
 I. CRITICAL SCORING CEILINGS & DISQUALIFYING ERRORS:
 
 1. TASK DRIFT / OFF-TOPIC / TANGENTIAL RESPONSE (LỆCH TRỌNG TÂM CÂU HỎI):
-   - Definition: Failing to address the exact prompt prompt qualifiers (e.g., Prompt asks about "THE BEST WAY", but the student writes about general pros/cons of social media; Prompt asks about "STRESSFUL", but the student only describes electronic devices).
+   - Definition: Failing to address the exact prompt qualifiers (e.g., Prompt asks about "THE BEST WAY", but the student writes about general pros/cons of social media; Prompt asks about "STRESSFUL", but the student only describes electronic devices).
    - HARD CEILING PENALTY:
      * Completely Off-topic: Content = 0.00 to 0.10 / 0.70.
      * Task Drift / Tangential (Lệch trọng tâm / Lạc đề một phần): Content MUST BE CAPPED at 0.15 to 0.25 / 0.70. NO EXCEPTIONS. Do not give 0.35+ or 0.40+ if the student fails to answer the core debate.
@@ -107,17 +102,13 @@ B. ARGUMENTATIVE ESSAY ("Let me convince you of my position"):
 
 ============================================================
 III. OFFICIAL BAC NINH 2.0-POINT RUBRIC (STRICT SCORING - 0.05 INCREMENTS):
-1. Content (0.70 pt max):
-   - Full alignment with prompt, nuanced depth, clear mechanisms, no task drift.
-2. Organization & Presentation (0.60 pt max):
-   - Coherence, internal logic, 4-paragraph structure, no mechanical linkers.
-3. Language (0.60 pt max):
-   - Natural C1 vocabulary range, authentic collocations, advanced sentence structures, academic hedging. Zero tolerance for fabricated expressions.
-4. Mechanics (0.10 pt max):
-   - Punctuation, capitalization, zero spelling errors, NO contractions.
+1. Content (0.70 pt max): Full alignment with prompt, nuanced depth, clear mechanisms, no task drift.
+2. Organization & Presentation (0.60 pt max): Coherence, internal logic, 4-paragraph structure, no mechanical linkers.
+3. Language (0.60 pt max): Natural C1 vocabulary range, authentic collocations, advanced sentence structures, academic hedging. Zero tolerance for fabricated expressions.
+4. Mechanics (0.10 pt max): Punctuation, capitalization, zero spelling errors, NO contractions.
 
 ============================================================
-IV. REQUIRED OUTPUT FORMAT (Markdown, Vietnamese explanations, English textual quotes):
+IV. REQUIRED OUTPUT FORMAT:
 
 ### 1. 📋 ĐÁNH GIÁ TỔNG QUAN & DẠNG BÀI
 - **Thể loại bài viết:** [Discussive Essay / Argumentative Essay]
@@ -151,7 +142,7 @@ IV. REQUIRED OUTPUT FORMAT (Markdown, Vietnamese explanations, English textual q
 (Ghi 1-3 lỗi cốt lõi ngắn gọn để ghi vào CSDL theo dõi cá nhân, ví dụ: "Task Drift", "Thiếu Mechanism", "Collocation tự chế", "Dùng từ viết tắt").
 """
 
-# Quản lý Đăng nhập qua Session State
+# Quản lý Đăng nhập
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user = None
@@ -160,11 +151,11 @@ def login(username, password):
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
     c.execute("SELECT username, fullname, role FROM users WHERE username = ? AND password = ?", (username, password))
-    user = c.fetchone()
+    user_record = c.fetchone()
     conn.close()
-    if user:
+    if user_record:
         st.session_state.logged_in = True
-        st.session_state.user = {"username": user[0], "fullname": user[1], "role": user[2]}
+        st.session_state.user = {"username": user_record[0], "fullname": user_record[1], "role": user_record[2]}
         st.rerun()
     else:
         st.error("Tên đăng nhập hoặc mật khẩu không chính xác!")
@@ -174,7 +165,7 @@ def logout():
     st.session_state.user = None
     st.rerun()
 
-# --- MÀN HÌNH ĐĂNG NHẬP ---
+# Màn hình đăng nhập
 if not st.session_state.logged_in:
     st.title("🎓 Hệ Thống Bồi Dưỡng & Chấm Essay HSG Tiếng Anh 9")
     st.subheader("Trường THCS Thân Nhân Trung - TP. Bắc Ninh")
@@ -188,13 +179,13 @@ if not st.session_state.logged_in:
             login(username_input, password_input)
             
         st.info("""
-        💡 **Tài khoản mặc định thử nghiệm:**
+        💡 **Tài khoản mặc định:**
         - **Giáo viên:** `giaovien` / `gv123456`
         - **Học sinh:** `hs01`, `hs02`, `hs03` / `123456`
         """)
     st.stop()
 
-# --- GIAO DIỆN ĐÃ ĐĂNG NHẬP ---
+# Đã đăng nhập
 user = st.session_state.user
 st.sidebar.markdown(f"### 👤 Xin chào: **{user['fullname']}**")
 st.sidebar.caption(f"Vai trò: {'Giáo viên quản trị' if user['role'] == 'teacher' else 'Học sinh đội tuyển'}")
@@ -203,19 +194,15 @@ if st.sidebar.button("Đăng xuất"):
 
 st.sidebar.markdown("---")
 
-# Cấu hình API Key (Lấy từ Sidebar hoặc mặc định)
-# Tự động lấy API Key từ Streamlit Secrets nếu có, nếu không thì mới hiện ô nhập
+# Tự động lấy API Key từ Streamlit Secrets nếu có
 if "GEMINI_API_KEY" in st.secrets:
     api_key = st.secrets["GEMINI_API_KEY"]
 else:
-    api_key = st.sidebar.text_input("Gemini API Key:", type="password", help="Dán mã API Key của thầy vào đây để hệ thống hoạt động")
+    api_key = st.sidebar.text_input("Gemini API Key:", type="password", help="Dán API Key vào đây nếu chưa cấu hình Secrets")
 
-# =========================================================================
 # GIAO DIỆN HỌC SINH
-# =========================================================================
 if user["role"] == "student":
     st.title("📝 Nộp Bài & Theo Dõi Tiến Độ Cá Nhân")
-    
     tab_submit, tab_history = st.tabs(["🚀 Nộp bài Essay mới", "📈 Hồ sơ & Lịch sử cá nhân"])
     
     with tab_submit:
@@ -250,7 +237,6 @@ if user["role"] == "student":
             else:
                 with st.spinner("Giám khảo AI đang đối chiếu barem Bắc Ninh và phân tích hồ sơ của em..."):
                     try:
-                        # 1. Lấy lịch sử lỗi trước đó của học sinh để cá nhân hóa
                         conn = sqlite3.connect("essay_database.db")
                         c = conn.cursor()
                         c.execute("SELECT identified_errors FROM submissions WHERE username = ? ORDER BY id DESC LIMIT 3", (user["username"],))
@@ -286,7 +272,6 @@ if user["role"] == "student":
                         st.success("✅ Đã hoàn thành chấm bài!")
                         st.markdown(result_text)
                         
-                        # 2. Tự động lưu kết quả vào CSDL
                         conn = sqlite3.connect("essay_database.db")
                         c = conn.cursor()
                         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -316,18 +301,14 @@ if user["role"] == "student":
                 with st.expander(f"📝 Đề: {r[1][:70]}... - Ngày nộp: {r[2]}"):
                     st.markdown(r[3])
 
-# =========================================================================
-# GIAO DIỆN GIÁO VIÊN (DASHBOARD QUẢN TRỊ)
-# =========================================================================
+# GIAO DIỆN GIÁO VIÊN
 elif user["role"] == "teacher":
     st.title("👨‍🏫 Bảng Điều Khiển Quản Trị Giáo Viên")
-    
     t_tab1, t_tab2, t_tab3 = st.tabs(["📊 Tổng hợp kết quả cả lớp", "🔍 Xem bài & Xoá bài nộp", "👥 Quản lý & Xoá học sinh"])
     
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
     
-    # ---------------- TAB 1: TỔNG HỢP CẢ LỚP ----------------
     with t_tab1:
         st.markdown("### 📌 Báo cáo tổng thể đội tuyển HSG")
         c.execute('''
@@ -361,7 +342,6 @@ elif user["role"] == "teacher":
             3. **Overclaiming:** Khẳng định tuyệt đối, thiếu ngôn ngữ học thuật chừng mực (Hedging).
             """)
             
-    # ---------------- TAB 2: XEM BÀI VÀ NÚT XOÁ BÀI ----------------
     with t_tab2:
         st.markdown("### 🔍 Thẩm định bài làm & Xoá bài nộp")
         c.execute("SELECT id, fullname, topic, created_at, feedback, essay_text FROM submissions s JOIN users u ON s.username = u.username ORDER BY s.id DESC")
@@ -379,7 +359,6 @@ elif user["role"] == "teacher":
             with col_del:
                 st.write("")
                 st.write("")
-                # Nút xoá bài nộp được chọn
                 if st.button("🗑️ Xoá bài này", type="secondary", use_container_width=True):
                     c.execute("DELETE FROM submissions WHERE id = ?", (selected_sub[0],))
                     conn.commit()
@@ -395,7 +374,6 @@ elif user["role"] == "teacher":
         else:
             st.info("Không có bài nộp nào để hiển thị.")
 
-    # ---------------- TAB 3: QUẢN LÝ VÀ XOÁ HỌC SINH ----------------
     with t_tab3:
         col_add, col_remove = st.columns(2)
         
@@ -428,11 +406,9 @@ elif user["role"] == "teacher":
                 target_student = st.selectbox("Chọn học sinh cần xoá:", list(student_dict.keys()))
                 student_user_to_delete = student_dict[target_student]
                 
-                confirm_del = st.checkbox(f"Xác nhận xoá toàn bộ dữ liệu của học sinh này")
+                confirm_del = st.checkbox("Xác nhận xoá toàn bộ dữ liệu của học sinh này")
                 if st.button("🗑️ Xoá vĩnh viễn học sinh", type="primary", disabled=not confirm_del):
-                    # Xoá bài nộp liên quan trước
                     c.execute("DELETE FROM submissions WHERE username = ?", (student_user_to_delete,))
-                    # Xoá tài khoản
                     c.execute("DELETE FROM users WHERE username = ?", (student_user_to_delete,))
                     conn.commit()
                     st.success(f"Đã xoá học sinh {target_student} và toàn bộ bài nộp liên quan!")
@@ -446,4 +422,4 @@ elif user["role"] == "teacher":
         current_users = c.fetchall()
         st.table([{"Tên đăng nhập": u[0], "Họ và tên": u[1], "Vai trò": "Giáo viên" if u[2] == "teacher" else "Học sinh"} for u in current_users])
         
-       conn.close()
+    conn.close()
