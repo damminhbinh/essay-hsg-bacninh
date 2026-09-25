@@ -21,12 +21,15 @@ st.set_page_config(
 
 DEFAULT_API_KEYS = []
 
+# Khối thông tin Tác giả hiển thị dùng chung
 AUTHOR_INFO_MARKDOWN = """
 **Tác giả:**
-* **1. Đàm Thuận Minh Bình** - 📞 0387.136.888
-* **2. Đỗ Thị Huyền** - 📞 0982.036.952
+* **1. Đàm Thuận Minh Bình**  
+  📞 0387.136.888
+* **2. Đỗ Thị Huyền**  
+  📞 0982.036.952
 
-*🏫 Trường THCS Thân Nhân Trung - TP. Bắc Ninh*
+🏫 *Trường THCS Thân Nhân Trung - TP. Bắc Ninh*
 """
 
 # HÀM TẠO FILE DOCX CHUẨN THỂ THỨC (TIMES NEW ROMAN, CỠ 13PT, LỀ TRÁI 3CM, CÒN LẠI 2CM)
