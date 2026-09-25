@@ -29,7 +29,7 @@ AUTHOR_INFO_MARKDOWN = """
 * **2. Đỗ Thị Huyền**  
   📞 0982.036.952
 
-🏫 *Trường THCS Thân Nhân Trung - TP. Bắc Ninh*
+🏫 *Trường THCS Thân Nhân Trung - P. Việt Yên - TP. Bắc Ninh*
 """
 
 # HÀM TẠO FILE DOCX CHUẨN THỂ THỨC (TIMES NEW ROMAN, CỠ 13PT, LỀ TRÁI 3CM, CÒN LẠI 2CM)
