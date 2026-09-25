@@ -204,7 +204,11 @@ if st.sidebar.button("Đăng xuất"):
 st.sidebar.markdown("---")
 
 # Cấu hình API Key (Lấy từ Sidebar hoặc mặc định)
-api_key = st.sidebar.text_input("Gemini API Key:", type="password", help="Dán mã API Key của thầy vào đây để hệ thống hoạt động")
+# Tự động lấy API Key từ Streamlit Secrets nếu có, nếu không thì mới hiện ô nhập
+if "GEMINI_API_KEY" in st.secrets:
+    api_key = st.secrets["GEMINI_API_KEY"]
+else:
+    api_key = st.sidebar.text_input("Gemini API Key:", type="password", help="Dán mã API Key của thầy vào đây để hệ thống hoạt động")
 
 # =========================================================================
 # GIAO DIỆN HỌC SINH
