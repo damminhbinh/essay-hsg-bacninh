@@ -1,5 +1,3 @@
-pillow
-markdown
 streamlit
 google-genai
 pillow
