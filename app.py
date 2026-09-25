@@ -12,6 +12,9 @@ st.set_page_config(
     layout="wide"
 )
 
+# Danh sách danh sách API Key dự phòng (Tự động xoay vòng nếu một tài khoản hết quota)
+DEFAULT_API_KEYS = []
+
 # 2. Quản lý Cơ sở dữ liệu SQLite
 def init_db():
     conn = sqlite3.connect("essay_database.db")
@@ -165,7 +168,7 @@ def logout():
     st.session_state.user = None
     st.rerun()
 
-# --- MÀN HÌNH ĐĂNG NHẬP (Đã bỏ hộp tài khoản mặc định và hỗ trợ bấm Enter) ---
+# --- MÀN HÌNH ĐĂNG NHẬP ---
 if not st.session_state.logged_in:
     st.title("🎓 Hệ Thống Bồi Dưỡng & Chấm Essay HSG Tiếng Anh 9")
     st.subheader("Trường THCS Thân Nhân Trung - TP. Bắc Ninh")
@@ -219,11 +222,12 @@ if st.sidebar.button("Đăng xuất", use_container_width=True):
 
 st.sidebar.markdown("---")
 
-# Tự động lấy API Key từ Streamlit Secrets nếu có
-if "GEMINI_API_KEY" in st.secrets:
-    api_key = st.secrets["GEMINI_API_KEY"]
-else:
-    api_key = st.sidebar.text_input("Gemini API Key:", type="password", help="Dán API Key vào đây nếu chưa cấu hình Secrets")
+# Tổng hợp danh sách Key khả dụng
+active_api_keys = list(DEFAULT_API_KEYS)
+if "GEMINI_API_KEYS" in st.secrets:
+    active_api_keys = list(st.secrets["GEMINI_API_KEYS"]) + active_api_keys
+elif "GEMINI_API_KEY" in st.secrets:
+    active_api_keys = [st.secrets["GEMINI_API_KEY"]] + active_api_keys
 
 # =========================================================================
 # GIAO DIỆN HỌC SINH
@@ -255,47 +259,56 @@ if user["role"] == "student":
                 st.image(uploaded_image, caption="Bài làm viết tay", use_container_width=True)
                 
         if st.button("🚀 Nộp bài & Chấm điểm ngay", type="primary"):
-            if not api_key:
-                st.error("⚠️ Hệ thống chưa được cấu hình API Key. Vui lòng liên hệ giáo viên!")
-            elif not essay_prompt.strip():
+            if not essay_prompt.strip():
                 st.error("⚠️ Vui lòng nhập hoặc chọn đề thi!")
             elif not essay_text.strip() and not uploaded_image:
                 st.error("⚠️ Vui lòng dán nội dung bài hoặc tải ảnh lên!")
             else:
-                with st.spinner("Giám khảo AI đang đối chiếu barem Bắc Ninh và phân tích hồ sơ của em..."):
-                    try:
-                        conn = sqlite3.connect("essay_database.db")
-                        c = conn.cursor()
-                        c.execute("SELECT identified_errors FROM submissions WHERE username = ? ORDER BY id DESC LIMIT 3", (user["username"],))
-                        past_errors = c.fetchall()
-                        conn.close()
-                        
-                        error_history_text = "Học sinh chưa có lịch sử nộp bài trước đó."
-                        if past_errors:
-                            error_history_text = "Các lỗi học sinh này THƯỜNG MẮC ở các bài trước: " + ", ".join([e[0] for e in past_errors if e[0]])
-                        
-                        client = genai.Client(api_key=api_key)
-                        
-                        user_content = [
-                            f"LỊCH SỬ HỌC TẬP CỦA HỌC SINH NÀY:\n{error_history_text}\n\n",
-                            f"ĐỀ THI: {essay_prompt}\n\n",
-                            "Hãy chấm bài luận sau theo đúng barem nghiêm ngặt của Bắc Ninh:"
-                        ]
-                        if essay_text.strip():
-                            user_content.append(f"\nBÀI LÀM:\n{essay_text}")
-                        if uploaded_image:
-                            user_content.append(uploaded_image)
-                            
-                        response = client.models.generate_content(
-                            model='gemini-3.8-flash',
-                            contents=user_content,
-                            config=types.GenerateContentConfig(
-                                system_instruction=SYSTEM_INSTRUCTION,
-                                temperature=0.15
+                with st.spinner("Giám khảo AI đang đối chiếu barem Bắc Ninh và chấm bài..."):
+                    conn = sqlite3.connect("essay_database.db")
+                    c = conn.cursor()
+                    c.execute("SELECT identified_errors FROM submissions WHERE username = ? ORDER BY id DESC LIMIT 3", (user["username"],))
+                    past_errors = c.fetchall()
+                    conn.close()
+                    
+                    error_history_text = "Học sinh chưa có lịch sử nộp bài trước đó."
+                    if past_errors:
+                        error_history_text = "Các lỗi học sinh này THƯỜNG MẮC ở các bài trước: " + ", ".join([e[0] for e in past_errors if e[0]])
+                    
+                    user_content = [
+                        f"LỊCH SỬ HỌC TẬP CỦA HỌC SINH NÀY:\n{error_history_text}\n\n",
+                        f"ĐỀ THI: {essay_prompt}\n\n",
+                        "Hãy chấm bài luận sau theo đúng barem nghiêm ngặt của Bắc Ninh:"
+                    ]
+                    if essay_text.strip():
+                        user_content.append(f"\nBÀI LÀM:\n{essay_text}")
+                    if uploaded_image:
+                        user_content.append(uploaded_image)
+
+                    # CƠ CHẾ XOAY VÒNG VÀ DỰ PHÒNG KHÓA TỰ ĐỘNG
+                    success = False
+                    result_text = ""
+                    last_err = ""
+
+                    for key in active_api_keys:
+                        try:
+                            client = genai.Client(api_key=key.strip())
+                            response = client.models.generate_content(
+                                model='gemini-3.8-flash',
+                                contents=user_content,
+                                config=types.GenerateContentConfig(
+                                    system_instruction=SYSTEM_INSTRUCTION,
+                                    temperature=0.15
+                                )
                             )
-                        )
-                        
-                        result_text = response.text
+                            result_text = response.text
+                            success = True
+                            break
+                        except Exception as e:
+                            last_err = str(e)
+                            continue
+
+                    if success:
                         st.success("✅ Đã hoàn thành chấm bài!")
                         st.markdown(result_text)
                         
@@ -308,9 +321,8 @@ if user["role"] == "student":
                         ''', (user["username"], essay_prompt, essay_text, 1.5, 0.5, 0.45, 0.45, 0.1, result_text, "Task Drift, Overclaiming", now_str))
                         conn.commit()
                         conn.close()
-                        
-                    except Exception as e:
-                        st.error(f"Đã xảy ra lỗi: {str(e)}")
+                    else:
+                        st.error(f"Tất cả các API Key dự phòng đều gặp lỗi hoặc hết quota. Chi tiết lỗi cuối: {last_err}")
 
     with tab_history:
         st.markdown(f"### 📈 Hồ sơ theo dõi học tập của {user['fullname']}")
@@ -338,7 +350,7 @@ elif user["role"] == "teacher":
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
     
-    # ---------------- TAB 1: TỔNG HỢP CẢ LỚP ----------------
+    # TAB 1: TỔNG HỢP CẢ LỚP
     with t_tab1:
         st.markdown("### 📌 Báo cáo tổng thể đội tuyển HSG")
         c.execute('''
@@ -372,7 +384,7 @@ elif user["role"] == "teacher":
             3. **Overclaiming:** Khẳng định tuyệt đối, thiếu ngôn ngữ học thuật chừng mực (Hedging).
             """)
             
-    # ---------------- TAB 2: XEM BÀI VÀ NÚT XOÁ BÀI ----------------
+    # TAB 2: XEM BÀI VÀ NÚT XOÁ BÀI
     with t_tab2:
         st.markdown("### 🔍 Thẩm định bài làm & Xoá bài nộp")
         c.execute("SELECT id, fullname, topic, created_at, feedback, essay_text FROM submissions s JOIN users u ON s.username = u.username ORDER BY s.id DESC")
@@ -405,7 +417,7 @@ elif user["role"] == "teacher":
         else:
             st.info("Không có bài nộp nào để hiển thị.")
 
-    # ---------------- TAB 3: QUẢN LÝ VÀ XOÁ HỌC SINH ----------------
+    # TAB 3: QUẢN LÝ VÀ XOÁ HỌC SINH
     with t_tab3:
         col_add, col_remove = st.columns(2)
         
