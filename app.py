@@ -142,7 +142,7 @@ IV. REQUIRED OUTPUT FORMAT:
 (Ghi 1-3 lỗi cốt lõi ngắn gọn để ghi vào CSDL theo dõi cá nhân, ví dụ: "Task Drift", "Thiếu Mechanism", "Collocation tự chế", "Dùng từ viết tắt").
 """
 
-# Quản lý Đăng nhập
+# Quản lý Đăng nhập qua Session State
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user = None
@@ -150,7 +150,7 @@ if "logged_in" not in st.session_state:
 def login(username, password):
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
-    c.execute("SELECT username, fullname, role FROM users WHERE username = ? AND password = ?", (username, password))
+    c.execute("SELECT username, fullname, role FROM users WHERE username = ? AND password = ?", (username.strip(), password.strip()))
     user_record = c.fetchone()
     conn.close()
     if user_record:
@@ -165,31 +165,56 @@ def logout():
     st.session_state.user = None
     st.rerun()
 
-# Màn hình đăng nhập
+# --- MÀN HÌNH ĐĂNG NHẬP (Đã bỏ hộp tài khoản mặc định và hỗ trợ bấm Enter) ---
 if not st.session_state.logged_in:
     st.title("🎓 Hệ Thống Bồi Dưỡng & Chấm Essay HSG Tiếng Anh 9")
     st.subheader("Trường THCS Thân Nhân Trung - TP. Bắc Ninh")
     
     col1, col2 = st.columns([1, 2])
     with col1:
-        st.markdown("### 🔐 Đăng nhập")
-        username_input = st.text_input("Tên đăng nhập:")
-        password_input = st.text_input("Mật khẩu:", type="password")
-        if st.button("Đăng nhập", type="primary", use_container_width=True):
-            login(username_input, password_input)
-            
-        st.info("""
-        💡 **Tài khoản mặc định:**
-        - **Giáo viên:** `giaovien` / `gv123456`
-        - **Học sinh:** `hs01`, `hs02`, `hs03` / `123456`
-        """)
+        st.markdown("### 🔐 Đăng nhập hệ thống")
+        with st.form("login_form"):
+            username_input = st.text_input("Tên đăng nhập:")
+            password_input = st.text_input("Mật khẩu:", type="password")
+            submitted = st.form_submit_button("Đăng nhập", type="primary", use_container_width=True)
+            if submitted:
+                if username_input and password_input:
+                    login(username_input, password_input)
+                else:
+                    st.warning("Vui lòng điền tên đăng nhập và mật khẩu!")
     st.stop()
 
-# Đã đăng nhập
+# --- GIAO DIỆN ĐÃ ĐĂNG NHẬP ---
 user = st.session_state.user
 st.sidebar.markdown(f"### 👤 Xin chào: **{user['fullname']}**")
 st.sidebar.caption(f"Vai trò: {'Giáo viên quản trị' if user['role'] == 'teacher' else 'Học sinh đội tuyển'}")
-if st.sidebar.button("Đăng xuất"):
+
+# --- CHỨC NĂNG ĐỔI MẬT KHẨU ---
+with st.sidebar.expander("🔑 Đổi mật khẩu"):
+    with st.form("change_pw_form"):
+        old_pw = st.text_input("Mật khẩu hiện tại:", type="password")
+        new_pw = st.text_input("Mật khẩu mới:", type="password")
+        confirm_pw = st.text_input("Xác nhận mật khẩu mới:", type="password")
+        btn_pw = st.form_submit_button("Lưu mật khẩu mới", use_container_width=True)
+        if btn_pw:
+            if not old_pw or not new_pw:
+                st.error("Vui lòng điền đủ thông tin!")
+            elif new_pw != confirm_pw:
+                st.error("Mật khẩu xác nhận không khớp!")
+            else:
+                conn = sqlite3.connect("essay_database.db")
+                c = conn.cursor()
+                c.execute("SELECT password FROM users WHERE username = ?", (user["username"],))
+                curr_db_pw = c.fetchone()
+                if curr_db_pw and curr_db_pw[0] == old_pw:
+                    c.execute("UPDATE users SET password = ? WHERE username = ?", (new_pw, user["username"]))
+                    conn.commit()
+                    st.success("Đổi mật khẩu thành công!")
+                else:
+                    st.error("Mật khẩu hiện tại không đúng!")
+                conn.close()
+
+if st.sidebar.button("Đăng xuất", use_container_width=True):
     logout()
 
 st.sidebar.markdown("---")
@@ -200,7 +225,9 @@ if "GEMINI_API_KEY" in st.secrets:
 else:
     api_key = st.sidebar.text_input("Gemini API Key:", type="password", help="Dán API Key vào đây nếu chưa cấu hình Secrets")
 
+# =========================================================================
 # GIAO DIỆN HỌC SINH
+# =========================================================================
 if user["role"] == "student":
     st.title("📝 Nộp Bài & Theo Dõi Tiến Độ Cá Nhân")
     tab_submit, tab_history = st.tabs(["🚀 Nộp bài Essay mới", "📈 Hồ sơ & Lịch sử cá nhân"])
@@ -278,7 +305,7 @@ if user["role"] == "student":
                         c.execute('''
                             INSERT INTO submissions (username, topic, essay_text, score_total, score_content, score_org, score_lang, score_mech, feedback, identified_errors, created_at)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ''', (user["username"], essay_prompt, essay_text, 1.5, 0.5, 0.45, 0.45, 0.1, result_text, "Overclaiming, Thiếu Mechanism", now_str))
+                        ''', (user["username"], essay_prompt, essay_text, 1.5, 0.5, 0.45, 0.45, 0.1, result_text, "Task Drift, Overclaiming", now_str))
                         conn.commit()
                         conn.close()
                         
@@ -301,7 +328,9 @@ if user["role"] == "student":
                 with st.expander(f"📝 Đề: {r[1][:70]}... - Ngày nộp: {r[2]}"):
                     st.markdown(r[3])
 
-# GIAO DIỆN GIÁO VIÊN
+# =========================================================================
+# GIAO DIỆN GIÁO VIÊN (DASHBOARD QUẢN TRỊ)
+# =========================================================================
 elif user["role"] == "teacher":
     st.title("👨‍🏫 Bảng Điều Khiển Quản Trị Giáo Viên")
     t_tab1, t_tab2, t_tab3 = st.tabs(["📊 Tổng hợp kết quả cả lớp", "🔍 Xem bài & Xoá bài nộp", "👥 Quản lý & Xoá học sinh"])
@@ -309,6 +338,7 @@ elif user["role"] == "teacher":
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
     
+    # ---------------- TAB 1: TỔNG HỢP CẢ LỚP ----------------
     with t_tab1:
         st.markdown("### 📌 Báo cáo tổng thể đội tuyển HSG")
         c.execute('''
@@ -342,6 +372,7 @@ elif user["role"] == "teacher":
             3. **Overclaiming:** Khẳng định tuyệt đối, thiếu ngôn ngữ học thuật chừng mực (Hedging).
             """)
             
+    # ---------------- TAB 2: XEM BÀI VÀ NÚT XOÁ BÀI ----------------
     with t_tab2:
         st.markdown("### 🔍 Thẩm định bài làm & Xoá bài nộp")
         c.execute("SELECT id, fullname, topic, created_at, feedback, essay_text FROM submissions s JOIN users u ON s.username = u.username ORDER BY s.id DESC")
@@ -374,6 +405,7 @@ elif user["role"] == "teacher":
         else:
             st.info("Không có bài nộp nào để hiển thị.")
 
+    # ---------------- TAB 3: QUẢN LÝ VÀ XOÁ HỌC SINH ----------------
     with t_tab3:
         col_add, col_remove = st.columns(2)
         
