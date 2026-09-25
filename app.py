@@ -12,8 +12,17 @@ st.set_page_config(
     layout="wide"
 )
 
-# Danh sách danh sách API Key dự phòng (Tự động xoay vòng nếu một tài khoản hết quota)
+# Danh sách API Keys nội bộ (để trống để bảo mật với GitHub)
 DEFAULT_API_KEYS = []
+
+# Thông tin chữ ký giáo viên
+TEACHER_SIGNATURE = """
+\n\n---
+### ✍️ GIÁO VIÊN BỒI DƯỠNG & CHẤM ĐIỂM
+**Cô Đỗ Thị Huyền**  
+Trường THCS Thân Nhân Trung - TP. Bắc Ninh  
+📞 Số điện thoại: 0982.036.952
+"""
 
 # 2. Quản lý Cơ sở dữ liệu SQLite
 def init_db():
@@ -45,7 +54,7 @@ def init_db():
     ''')
     c.execute("SELECT * FROM users WHERE username = 'giaovien'")
     if not c.fetchone():
-        c.execute("INSERT INTO users VALUES ('giaovien', 'gv123456', 'Giáo viên Chủ nhiệm', 'teacher')")
+        c.execute("INSERT INTO users VALUES ('giaovien', 'gv123456', 'Đỗ Thị Huyền', 'teacher')")
         c.execute("INSERT INTO users VALUES ('hs01', '123456', 'Nguyễn Văn An', 'student')")
         c.execute("INSERT INTO users VALUES ('hs02', '123456', 'Trần Thị Bình', 'student')")
         c.execute("INSERT INTO users VALUES ('hs03', '123456', 'Lê Hoàng Long', 'student')")
@@ -107,7 +116,7 @@ B. ARGUMENTATIVE ESSAY ("Let me convince you of my position"):
 III. OFFICIAL BAC NINH 2.0-POINT RUBRIC (STRICT SCORING - 0.05 INCREMENTS):
 1. Content (0.70 pt max): Full alignment with prompt, nuanced depth, clear mechanisms, no task drift.
 2. Organization & Presentation (0.60 pt max): Coherence, internal logic, 4-paragraph structure, no mechanical linkers.
-3. Language (0.60 pt max): Natural C1 vocabulary range, authentic collocations, advanced sentence structures, academic hedging. Zero tolerance for fabricated expressions.
+3. Language (0.60 pt max): Natural vocabulary range, authentic collocations, clear sentence structures. Zero tolerance for fabricated expressions.
 4. Mechanics (0.10 pt max): Punctuation, capitalization, zero spelling errors, NO contractions.
 
 ============================================================
@@ -131,22 +140,22 @@ IV. REQUIRED OUTPUT FORMAT:
 ### 3. 🔍 SOI LỖI LẬP LUẬN THEO CHUYÊN ĐỀ TẬP HUẤN
 - Chỉ ra các đoạn khẳng định suông thiếu cơ chế (Mechanism), ngộ nhận logic hoặc đưa ví dụ thay cho lập luận.
 - **Bảng phân tích câu văn chi tiết:**
-| Câu văn gốc của học sinh | Lỗi sai (Tư duy / Ngữ pháp / Collocation) | Đề xuất sửa chữa nâng cao (Chuẩn C1) |
+| Câu văn gốc của học sinh | Lỗi sai (Tư duy / Ngữ pháp / Collocation) | Đề xuất sửa chữa nâng cao |
 |---|---|---|
 
-### 4. 💎 NÂNG CẤP HỌC THUẬT (ACADEMIC UPGRADES CHO HSG TỈNH)
-- 4–5 cụm collocations C1 đắt giá sửa chữa đúng trọng tâm của đề.
-- Kỹ thuật Hedging / Qualified Language để tránh Overclaiming.
+### 4. 💎 NÂNG CẤP TỪ VỰNG & NGỮ PHÁP THEN CHỐT
+- 4–5 cụm collocations hữu ích sửa chữa đúng trọng tâm của đề.
+- Kỹ thuật diễn đạt điều kiện và lập luận chặt chẽ.
 
 ### 5. ✍️ BÀI VIẾT MẪU THAM KHẢO THEO 2 CẤP ĐỘ (200–230 TỪ)
 
-#### 🔹 Cấp độ 1: Bản Nền tảng & Dễ tiếp thu (Chuẩn mực B2 - Dành cho mọi đối tượng HSG)
-- **Đặc điểm:** Bố cục 4 đoạn rõ ràng, lập luận mạch lạc, câu văn ngắn gọn, dễ hiểu, từ vựng tự nhiên và chuẩn xác, không dùng từ ngữ quá hàn lâm/học thuật nặng nề để học sinh dễ nhớ và áp dụng ngay trong phòng thi.
-[Viết toàn bài essay mẫu Cấp độ 1 tại đây]
+#### 🔹 Cấp độ 1: Bản Nền tảng & Dễ tiếp thu (Mức độ B1 đến B1+ - Mọi học sinh đều học và nhớ được)
+- **Đặc điểm:** Dùng câu văn ngắn gọn, từ ngữ quen thuộc, ngữ pháp đơn giản nhưng tuyệt đối chuẩn xác (không sai thì, không sai chia động từ), liên kết tự nhiên (Firstly, In addition, However, As a result), lập luận bám sát đề thi để học sinh dễ hiểu, dễ ghi nhớ vào phòng thi.
+[Viết toàn bài essay mẫu hoàn chỉnh Cấp độ B1-B1+ tại đây]
 
 #### 🔸 Cấp độ 2: Bản Nâng cao & Bứt phá điểm số (Học thuật C1-C2 - Dành cho đội tuyển chuyên sâu)
-- **Đặc điểm:** Văn phong trang trọng, sử dụng các cụm collocation đắt giá, kỹ thuật Hedging, liên kết câu phức hợp và phân tích đa chiều để đạt điểm tuyệt đối về tiêu chí Language và Content.
-[Viết toàn bài essay mẫu Cấp độ 2 tại đây]
+- **Đặc điểm:** Văn phong trang trọng, sử dụng các cụm collocation đắt giá, kỹ thuật Hedging, liên kết câu phức hợp và phân tích cơ chế đa chiều để đạt điểm tuyệt đối về tiêu chí Language và Content.
+[Viết toàn bài essay mẫu hoàn chỉnh Cấp độ C1-C2 tại đây]
 
 ### 6. ⚠️ DANH SÁCH LỖI THEN CHỐT CẦN LƯU HỒ SƠ:
 (Ghi 1-3 lỗi cốt lõi ngắn gọn để ghi vào CSDL theo dõi cá nhân, ví dụ: "Task Drift", "Thiếu Mechanism", "Collocation tự chế", "Dùng từ viết tắt").
@@ -192,6 +201,16 @@ if not st.session_state.logged_in:
                     login(username_input, password_input)
                 else:
                     st.warning("Vui lòng điền tên đăng nhập và mật khẩu!")
+        
+        st.write("")
+        # --- THÔNG TIN TÁC GIẢ PHÁT TRIỂN HỆ THỐNG ---
+        st.info("""
+        **🛠️ Đơn vị Phát triển & Phụ trách Chuyên môn:**
+        * **1. Đàm Thuận Minh Bình** - 📞 0387.136.888
+        * **2. Đỗ Thị Huyền** - 📞 0982.036.952
+        
+        *🏫 Trường THCS Thân Nhân Trung - TP. Bắc Ninh*
+        """)
     st.stop()
 
 # --- GIAO DIỆN ĐÃ ĐĂNG NHẬP ---
@@ -292,7 +311,6 @@ if user["role"] == "student":
                     if uploaded_image:
                         user_content.append(uploaded_image)
 
-                    # CƠ CHẾ XOAY VÒNG VÀ DỰ PHÒNG KHÓA TỰ ĐỘNG
                     success = False
                     result_text = ""
                     last_err = ""
@@ -317,7 +335,25 @@ if user["role"] == "student":
 
                     if success:
                         st.success("✅ Đã hoàn thành chấm bài!")
-                        st.markdown(result_text)
+                        
+                        # Nội dung hoàn chỉnh bao gồm chữ ký giáo viên
+                        full_feedback_with_signature = result_text + TEACHER_SIGNATURE
+                        st.markdown(full_feedback_with_signature)
+                        
+                        # Nút Tải bản nhận xét về máy
+                        export_content = f"# BẢN NHẬN XÉT BÀI THI ESSAY HSG TIẾNG ANH 9\n" \
+                                         f"**Học sinh:** {user['fullname']} | **Ngày nộp:** {datetime.now().strftime('%d/%m/%Y %H:%M')}\n" \
+                                         f"**Đề bài:** {essay_prompt}\n\n" \
+                                         f"## BÀI LÀM CỦA HỌC SINH:\n{essay_text}\n\n" \
+                                         f"## ĐÁNH GIÁ CHI TIẾT CỦA GIÁO VIÊN:\n{full_feedback_with_signature}"
+                                         
+                        st.download_button(
+                            label="📥 Tải về bản nhận xét của Giáo viên (.doc / .txt)",
+                            data=export_content.encode("utf-8"),
+                            file_name=f"Nhan_xet_{user['username']}_{datetime.now().strftime('%Y%m%d_%H%M')}.doc",
+                            mime="text/plain",
+                            use_container_width=True
+                        )
                         
                         conn = sqlite3.connect("essay_database.db")
                         c = conn.cursor()
@@ -325,17 +361,17 @@ if user["role"] == "student":
                         c.execute('''
                             INSERT INTO submissions (username, topic, essay_text, score_total, score_content, score_org, score_lang, score_mech, feedback, identified_errors, created_at)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ''', (user["username"], essay_prompt, essay_text, 1.5, 0.5, 0.45, 0.45, 0.1, result_text, "Task Drift, Overclaiming", now_str))
+                        ''', (user["username"], essay_prompt, essay_text, 1.5, 0.5, 0.45, 0.45, 0.1, full_feedback_with_signature, "Task Drift, Overclaiming", now_str))
                         conn.commit()
                         conn.close()
                     else:
-                        st.error(f"Tất cả các API Key dự phòng đều gặp lỗi hoặc hết quota. Chi tiết lỗi cuối: {last_err}")
+                        st.error(f"Hệ thống gặp sự cố khi chấm bài. Chi tiết: {last_err}")
 
     with tab_history:
         st.markdown(f"### 📈 Hồ sơ theo dõi học tập của {user['fullname']}")
         conn = sqlite3.connect("essay_database.db")
         c = conn.cursor()
-        c.execute("SELECT id, topic, created_at, feedback FROM submissions WHERE username = ? ORDER BY id DESC", (user["username"],))
+        c.execute("SELECT id, topic, created_at, feedback, essay_text FROM submissions WHERE username = ? ORDER BY id DESC", (user["username"],))
         rows = c.fetchall()
         conn.close()
         
@@ -346,6 +382,18 @@ if user["role"] == "student":
             for r in rows:
                 with st.expander(f"📝 Đề: {r[1][:70]}... - Ngày nộp: {r[2]}"):
                     st.markdown(r[3])
+                    export_single = f"# BẢN NHẬN XÉT BÀI THI ESSAY\n" \
+                                    f"**Học sinh:** {user['fullname']} | **Ngày nộp:** {r[2]}\n" \
+                                    f"**Đề bài:** {r[1]}\n\n" \
+                                    f"## BÀI LÀM CỦA HỌC SINH:\n{r[4]}\n\n" \
+                                    f"## ĐÁNH GIÁ CHI TIẾT:\n{r[3]}"
+                    st.download_button(
+                        label=f"📥 Tải về bản nhận xét bài này (Mã #{r[0]})",
+                        data=export_single.encode("utf-8"),
+                        file_name=f"Nhan_xet_{user['username']}_bai_{r[0]}.doc",
+                        mime="text/plain",
+                        key=f"dl_{r[0]}"
+                    )
 
 # =========================================================================
 # GIAO DIỆN GIÁO VIÊN (DASHBOARD QUẢN TRỊ)
@@ -394,7 +442,7 @@ elif user["role"] == "teacher":
     # TAB 2: XEM BÀI VÀ NÚT XOÁ BÀI
     with t_tab2:
         st.markdown("### 🔍 Thẩm định bài làm & Xoá bài nộp")
-        c.execute("SELECT id, fullname, topic, created_at, feedback, essay_text FROM submissions s JOIN users u ON s.username = u.username ORDER BY s.id DESC")
+        c.execute("SELECT s.id, u.fullname, s.topic, s.created_at, s.feedback, s.essay_text FROM submissions s JOIN users u ON s.username = u.username ORDER BY s.id DESC")
         all_subs = c.fetchall()
         
         if all_subs:
@@ -421,6 +469,19 @@ elif user["role"] == "teacher":
             st.markdown("---")
             st.markdown("### 📝 Kết quả chấm & Nhận xét của AI:")
             st.markdown(selected_sub[4])
+            
+            # Giáo viên tải bản nhận xét
+            export_teacher = f"# BẢN NHẬN XÉT BÀI THI ESSAY\n" \
+                             f"**Học sinh:** {selected_sub[1]} | **Ngày nộp:** {selected_sub[3]}\n" \
+                             f"**Đề bài:** {selected_sub[2]}\n\n" \
+                             f"## BÀI LÀM:\n{selected_sub[5]}\n\n" \
+                             f"## NHẬN XÉT & BẢNG ĐIỂM:\n{selected_sub[4]}"
+            st.download_button(
+                label=f"📥 Tải về bản nhận xét của học sinh {selected_sub[1]} (.doc)",
+                data=export_teacher.encode("utf-8"),
+                file_name=f"Nhan_xet_{selected_sub[1]}_{selected_sub[0]}.doc",
+                mime="text/plain"
+            )
         else:
             st.info("Không có bài nộp nào để hiển thị.")
 
