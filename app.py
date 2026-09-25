@@ -4,6 +4,8 @@ from datetime import datetime
 from google import genai
 from google.genai import types
 from PIL import Image
+import markdown
+from weasyprint import HTML
 
 # 1. Cấu hình giao diện Web
 st.set_page_config(
@@ -15,15 +17,6 @@ st.set_page_config(
 # Danh sách API Keys nội bộ (để trống để bảo mật với GitHub)
 DEFAULT_API_KEYS = []
 
-# Thông tin chữ ký giáo viên khi xuất file
-TEACHER_SIGNATURE = """
-\n\n---
-### ✍️ GIÁO VIÊN BỒI DƯỠNG & CHẤM ĐIỂM
-**Cô Đỗ Thị Huyền**  
-Trường THCS Thân Nhân Trung - TP. Bắc Ninh  
-📞 Số điện thoại: 0982.036.952
-"""
-
 # Khối thông tin Tác giả hiển thị dùng chung
 AUTHOR_INFO_MARKDOWN = """
 **Tác giả:**
@@ -32,6 +25,171 @@ AUTHOR_INFO_MARKDOWN = """
 
 *🏫 Trường THCS Thân Nhân Trung - TP. Bắc Ninh*
 """
+
+# HÀM TẠO FILE PDF CHUẨN THỂ THỨC (TIMES NEW ROMAN, CĂN LỀ 3CM - 2CM - 2CM - 2CM)
+def generate_pdf_report(student_name, date_str, topic, essay_text, feedback_md):
+    # Chuyển đổi Markdown sang HTML
+    feedback_html = markdown.markdown(feedback_md, extensions=['tables', 'fenced_code'])
+    essay_clean = essay_text.replace('\n', '<br>') if essay_text else "<i>(Bài làm dạng ảnh viết tay đã được AI thẩm định)</i>"
+
+    html_template = f"""
+    <!DOCTYPE html>
+    <html lang="vi">
+    <head>
+        <meta charset="utf-8">
+        <style>
+            @page {{
+                size: A4;
+                margin-top: 2.0cm;
+                margin-bottom: 2.0cm;
+                margin-left: 3.0cm;
+                margin-right: 2.0cm;
+                @bottom-right {{
+                    content: "Trang " counter(page) " / " counter(pages);
+                    font-family: "Times New Roman", Times, serif;
+                    font-size: 11pt;
+                }}
+            }}
+            body {{
+                font-family: "Times New Roman", Times, serif;
+                font-size: 13pt;
+                line-height: 1.35;
+                color: #111111;
+                text-align: justify;
+            }}
+            .header-table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 15px;
+            }}
+            .header-table td {{
+                border: none;
+                vertical-align: top;
+                padding: 0;
+            }}
+            .main-title {{
+                text-align: center;
+                font-size: 15pt;
+                font-weight: bold;
+                text-transform: uppercase;
+                margin-top: 10px;
+                margin-bottom: 15px;
+                color: #0b3c5d;
+            }}
+            .meta-box {{
+                background-color: #f7f9fa;
+                border-left: 4px solid #0b3c5d;
+                padding: 10px 14px;
+                margin-bottom: 20px;
+                font-size: 12.5pt;
+            }}
+            .meta-box p {{
+                margin: 4px 0;
+            }}
+            h2, h3, h4 {{
+                font-family: "Times New Roman", Times, serif;
+                color: #0b3c5d;
+                margin-top: 18px;
+                margin-bottom: 8px;
+            }}
+            h2 {{ font-size: 14pt; border-bottom: 1.5px solid #0b3c5d; padding-bottom: 4px; }}
+            h3 {{ font-size: 13.5pt; }}
+            h4 {{ font-size: 13pt; }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin: 14px 0;
+                font-size: 12pt;
+            }}
+            table, th, td {{
+                border: 1px solid #333333;
+            }}
+            th {{
+                background-color: #e9ecef;
+                font-weight: bold;
+                text-align: center;
+                padding: 8px 6px;
+            }}
+            td {{
+                padding: 7px 8px;
+                vertical-align: top;
+            }}
+            .essay-box {{
+                background-color: #ffffff;
+                border: 1px dashed #666666;
+                padding: 12px;
+                margin-bottom: 15px;
+                font-style: normal;
+            }}
+            .signature-section {{
+                width: 100%;
+                margin-top: 30px;
+                page-break-inside: avoid;
+            }}
+            .signature-table {{
+                width: 100%;
+                border: none;
+            }}
+            .signature-table td {{
+                border: none;
+                width: 50%;
+                text-align: center;
+                vertical-align: top;
+                padding: 0;
+            }}
+        </style>
+    </head>
+    <body>
+        <table class="header-table">
+            <tr>
+                <td style="text-align: center; width: 45%;">
+                    <span style="font-size: 12pt; font-weight: bold;">TRƯỜNG THCS THÂN NHÂN TRUNG</span><br>
+                    <span style="font-size: 11.5pt;">ĐỘI TUYỂN HSG TIẾNG ANH 9</span>
+                </td>
+                <td style="text-align: center; width: 55%;">
+                    <span style="font-size: 12pt; font-weight: bold;">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</span><br>
+                    <span style="font-size: 11.5pt; text-decoration: underline;">Độc lập - Tự do - Hạnh phúc</span>
+                </td>
+            </tr>
+        </table>
+
+        <div class="main-title">PHIẾU ĐÁNH GIÁ & NHẬN XÉT BÀI THI ESSAY</div>
+
+        <div class="meta-box">
+            <p><strong>Học sinh:</strong> {student_name}</p>
+            <p><strong>Thời gian nộp bài:</strong> {date_str}</p>
+            <p><strong>Đề thi:</strong> {topic}</p>
+        </div>
+
+        <h2>I. NỘI DUNG BÀI LÀM CỦA HỌC SINH</h2>
+        <div class="essay-box">
+            {essay_clean}
+        </div>
+
+        <h2>II. KẾT QUẢ ĐÁNH GIÁ & PHÂN TÍCH CHUYÊN SÂU</h2>
+        <div>
+            {feedback_html}
+        </div>
+
+        <div class="signature-section">
+            <table class="signature-table">
+                <tr>
+                    <td></td>
+                    <td>
+                        <span style="font-style: italic; font-size: 12pt;">Bắc Ninh, ngày ..... tháng ..... năm 202...</span><br>
+                        <strong>GIÁO VIÊN BỒI DƯỠNG & CHẤM ĐIỂM</strong><br>
+                        <br><br><br><br>
+                        <strong>Cô Đỗ Thị Huyền</strong><br>
+                        <span>Trường THCS Thân Nhân Trung</span><br>
+                        <span>📞 0982.036.952</span>
+                    </td>
+                </tr>
+            </table>
+        </div>
+    </body>
+    </html>
+    """
+    return HTML(string=html_template).write_pdf()
 
 # 2. Quản lý Cơ sở dữ liệu SQLite
 def init_db():
@@ -170,7 +328,7 @@ IV. REQUIRED OUTPUT FORMAT:
 (Ghi 1-3 lỗi cốt lõi ngắn gọn để ghi vào CSDL theo dõi cá nhân, ví dụ: "Task Drift", "Thiếu Mechanism", "Collocation tự chế", "Dùng từ viết tắt").
 """
 
-# Quản lý Đăng nhập qua Session State
+# Quản lý Đăng nhập
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user = None
@@ -193,7 +351,7 @@ def logout():
     st.session_state.user = None
     st.rerun()
 
-# --- MÀN HÌNH ĐĂNG NHẬP ---
+# MÀN HÌNH ĐĂNG NHẬP
 if not st.session_state.logged_in:
     st.title("🎓 Hệ Thống Bồi Dưỡng & Chấm Essay HSG Tiếng Anh 9")
     st.subheader("Trường THCS Thân Nhân Trung - TP. Bắc Ninh")
@@ -212,16 +370,14 @@ if not st.session_state.logged_in:
                     st.warning("Vui lòng điền tên đăng nhập và mật khẩu!")
         
         st.write("")
-        # Thông tin Tác giả ở màn hình đăng nhập
         st.info(AUTHOR_INFO_MARKDOWN)
     st.stop()
 
-# --- GIAO DIỆN ĐÃ ĐĂNG NHẬP ---
+# GIAO DIỆN ĐÃ ĐĂNG NHẬP
 user = st.session_state.user
 st.sidebar.markdown(f"### 👤 Xin chào: **{user['fullname']}**")
 st.sidebar.caption(f"Vai trò: {'Giáo viên quản trị' if user['role'] == 'teacher' else 'Học sinh đội tuyển'}")
 
-# --- CHỨC NĂNG ĐỔI MẬT KHẨU ---
 with st.sidebar.expander("🔑 Đổi mật khẩu"):
     with st.form("change_pw_form"):
         old_pw = st.text_input("Mật khẩu hiện tại:", type="password")
@@ -250,11 +406,8 @@ if st.sidebar.button("Đăng xuất", use_container_width=True):
     logout()
 
 st.sidebar.markdown("---")
-
-# THÔNG TIN TÁC GIẢ Ở SIDEBAR (HIỂN THỊ CẢ GIÁO VIÊN VÀ HỌC SINH)
 st.sidebar.info(AUTHOR_INFO_MARKDOWN)
 
-# Tổng hợp danh sách Key khả dụng
 active_api_keys = list(DEFAULT_API_KEYS)
 if "GEMINI_API_KEYS" in st.secrets:
     active_api_keys = list(st.secrets["GEMINI_API_KEYS"]) + active_api_keys
@@ -341,31 +494,29 @@ if user["role"] == "student":
 
                     if success:
                         st.success("✅ Đã hoàn thành chấm bài!")
+                        st.markdown(result_text)
                         
-                        full_feedback_with_signature = result_text + TEACHER_SIGNATURE
-                        st.markdown(full_feedback_with_signature)
+                        now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
                         
-                        export_content = f"# BẢN NHẬN XÉT BÀI THI ESSAY HSG TIẾNG ANH 9\n" \
-                                         f"**Học sinh:** {user['fullname']} | **Ngày nộp:** {datetime.now().strftime('%d/%m/%Y %H:%M')}\n" \
-                                         f"**Đề bài:** {essay_prompt}\n\n" \
-                                         f"## BÀI LÀM CỦA HỌC SINH:\n{essay_text}\n\n" \
-                                         f"## ĐÁNH GIÁ CHI TIẾT CỦA GIÁO VIÊN:\n{full_feedback_with_signature}"
-                                         
-                        st.download_button(
-                            label="📥 Tải về bản nhận xét của Giáo viên (.doc / .txt)",
-                            data=export_content.encode("utf-8"),
-                            file_name=f"Nhan_xet_{user['username']}_{datetime.now().strftime('%Y%m%d_%H%M')}.doc",
-                            mime="text/plain",
-                            use_container_width=True
-                        )
+                        # Tạo file PDF chuẩn mực
+                        try:
+                            pdf_bytes = generate_pdf_report(user['fullname'], now_str, essay_prompt, essay_text, result_text)
+                            st.download_button(
+                                label="📥 Tải Phiếu Nhận Xét PDF Chuẩn (Có Chữ Ký Giáo Viên)",
+                                data=pdf_bytes,
+                                file_name=f"Phieu_Nhan_Xet_{user['username']}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
+                        except Exception as pdf_err:
+                            st.warning(f"Không thể xuất PDF tự động (Vui lòng kiểm tra requirements.txt): {pdf_err}")
                         
                         conn = sqlite3.connect("essay_database.db")
                         c = conn.cursor()
-                        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
                         c.execute('''
                             INSERT INTO submissions (username, topic, essay_text, score_total, score_content, score_org, score_lang, score_mech, feedback, identified_errors, created_at)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ''', (user["username"], essay_prompt, essay_text, 1.5, 0.5, 0.45, 0.45, 0.1, full_feedback_with_signature, "Task Drift, Overclaiming", now_str))
+                        ''', (user["username"], essay_prompt, essay_text, 1.5, 0.5, 0.45, 0.45, 0.1, result_text, "Task Drift, Overclaiming", now_str))
                         conn.commit()
                         conn.close()
                     else:
@@ -386,18 +537,17 @@ if user["role"] == "student":
             for r in rows:
                 with st.expander(f"📝 Đề: {r[1][:70]}... - Ngày nộp: {r[2]}"):
                     st.markdown(r[3])
-                    export_single = f"# BẢN NHẬN XÉT BÀI THI ESSAY\n" \
-                                    f"**Học sinh:** {user['fullname']} | **Ngày nộp:** {r[2]}\n" \
-                                    f"**Đề bài:** {r[1]}\n\n" \
-                                    f"## BÀI LÀM CỦA HỌC SINH:\n{r[4]}\n\n" \
-                                    f"## ĐÁNH GIÁ CHI TIẾT:\n{r[3]}"
-                    st.download_button(
-                        label=f"📥 Tải về bản nhận xét bài này (Mã #{r[0]})",
-                        data=export_single.encode("utf-8"),
-                        file_name=f"Nhan_xet_{user['username']}_bai_{r[0]}.doc",
-                        mime="text/plain",
-                        key=f"dl_{r[0]}"
-                    )
+                    try:
+                        pdf_data = generate_pdf_report(user['fullname'], r[2], r[1], r[4], r[3])
+                        st.download_button(
+                            label=f"📥 Tải Phiếu PDF bài này (Mã #{r[0]})",
+                            data=pdf_data,
+                            file_name=f"Phieu_Nhan_Xet_{user['username']}_bai_{r[0]}.pdf",
+                            mime="application/pdf",
+                            key=f"dl_pdf_{r[0]}"
+                        )
+                    except Exception:
+                        pass
 
 # =========================================================================
 # GIAO DIỆN GIÁO VIÊN (DASHBOARD QUẢN TRỊ)
@@ -409,7 +559,6 @@ elif user["role"] == "teacher":
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
     
-    # TAB 1: TỔNG HỢP CẢ LỚP
     with t_tab1:
         st.markdown("### 📌 Báo cáo tổng thể đội tuyển HSG")
         c.execute('''
@@ -443,7 +592,6 @@ elif user["role"] == "teacher":
             3. **Overclaiming:** Khẳng định tuyệt đối, thiếu ngôn ngữ học thuật chừng mực (Hedging).
             """)
             
-    # TAB 2: XEM BÀI VÀ NÚT XOÁ BÀI
     with t_tab2:
         st.markdown("### 🔍 Thẩm định bài làm & Xoá bài nộp")
         c.execute("SELECT s.id, u.fullname, s.topic, s.created_at, s.feedback, s.essay_text FROM submissions s JOIN users u ON s.username = u.username ORDER BY s.id DESC")
@@ -474,21 +622,20 @@ elif user["role"] == "teacher":
             st.markdown("### 📝 Kết quả chấm & Nhận xét của AI:")
             st.markdown(selected_sub[4])
             
-            export_teacher = f"# BẢN NHẬN XÉT BÀI THI ESSAY\n" \
-                             f"**Học sinh:** {selected_sub[1]} | **Ngày nộp:** {selected_sub[3]}\n" \
-                             f"**Đề bài:** {selected_sub[2]}\n\n" \
-                             f"## BÀI LÀM:\n{selected_sub[5]}\n\n" \
-                             f"## NHẬN XÉT & BẢNG ĐIỂM:\n{selected_sub[4]}"
-            st.download_button(
-                label=f"📥 Tải về bản nhận xét của học sinh {selected_sub[1]} (.doc)",
-                data=export_teacher.encode("utf-8"),
-                file_name=f"Nhan_xet_{selected_sub[1]}_{selected_sub[0]}.doc",
-                mime="text/plain"
-            )
+            # Nút xuất PDF dành cho Giáo viên
+            try:
+                t_pdf = generate_pdf_report(selected_sub[1], selected_sub[3], selected_sub[2], selected_sub[5], selected_sub[4])
+                st.download_button(
+                    label=f"📥 Tải Phiếu Nhận Xét PDF của học sinh {selected_sub[1]}",
+                    data=t_pdf,
+                    file_name=f"Phieu_Nhan_Xet_{selected_sub[1]}_{selected_sub[0]}.pdf",
+                    mime="application/pdf"
+                )
+            except Exception:
+                pass
         else:
             st.info("Không có bài nộp nào để hiển thị.")
 
-    # TAB 3: QUẢN LÝ VÀ XOÁ HỌC SINH
     with t_tab3:
         col_add, col_remove = st.columns(2)
         
