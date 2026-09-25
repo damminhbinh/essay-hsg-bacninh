@@ -320,13 +320,14 @@ if user["role"] == "student":
 # GIAO DIỆN GIÁO VIÊN (DASHBOARD QUẢN TRỊ)
 # =========================================================================
 elif user["role"] == "teacher":
-    st.title("👨‍🏫 Bảng Điều Khiển Tổng Hợp Giáo Viên")
+    st.title("👨‍🏫 Bảng Điều Khiển Quản Trị Giáo Viên")
     
-    t_tab1, t_tab2, t_tab3 = st.tabs(["📊 Tổng hợp kết quả cả lớp", "🔍 Xem bài & Chữa lỗi chi tiết", "👥 Quản lý danh sách học sinh"])
+    t_tab1, t_tab2, t_tab3 = st.tabs(["📊 Tổng hợp kết quả cả lớp", "🔍 Xem bài & Xoá bài nộp", "👥 Quản lý & Xoá học sinh"])
     
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
     
+    # ---------------- TAB 1: TỔNG HỢP CẢ LỚP ----------------
     with t_tab1:
         st.markdown("### 📌 Báo cáo tổng thể đội tuyển HSG")
         c.execute('''
@@ -337,7 +338,7 @@ elif user["role"] == "teacher":
         submissions = c.fetchall()
         
         if not submissions:
-            st.info("Hiện tại chưa có học sinh nào nộp bài.")
+            st.info("Hiện tại chưa có bài nộp nào trong hệ thống.")
         else:
             st.write(f"Tổng số lượt nộp bài toàn đội tuyển: **{len(submissions)} lượt**")
             table_data = []
@@ -354,51 +355,95 @@ elif user["role"] == "teacher":
             st.markdown("---")
             st.markdown("### 💡 Gợi ý Chữa bài chung trên lớp (AI Teacher Assistant):")
             st.warning("""
-            **Các nhược điểm học sinh hay mắc nhiều nhất tuần này:**
-            1. **Thiếu Mechanism (Cơ chế):** Học sinh mới nêu được Claim (Khẳng định) và đưa ngay ví dụ, thiếu bước giải thích "Tại sao/Như thế nào".
-            2. **Overclaiming:** Dùng từ ngữ quá tuyệt đối (*always, completely, never*), cần rèn thêm kỹ thuật *Hedging*.
+            **Các nhược điểm học sinh hay mắc nhiều nhất:**
+            1. **Lệch trọng tâm (Task Drift):** Bỏ quên từ khóa so sánh nhất hoặc từ khóa điều kiện của đề.
+            2. **Thiếu Mechanism:** Mới nêu Claim đã vội đưa ví dụ, chưa giải thích chuỗi nguyên nhân - hệ quả (Why/How).
+            3. **Overclaiming:** Khẳng định tuyệt đối, thiếu ngôn ngữ học thuật chừng mực (Hedging).
             """)
             
+    # ---------------- TAB 2: XEM BÀI VÀ NÚT XOÁ BÀI ----------------
     with t_tab2:
-        st.markdown("### 🔍 Tra cứu bài làm chi tiết của từng học sinh")
+        st.markdown("### 🔍 Thẩm định bài làm & Xoá bài nộp")
         c.execute("SELECT id, fullname, topic, created_at, feedback, essay_text FROM submissions s JOIN users u ON s.username = u.username ORDER BY s.id DESC")
         all_subs = c.fetchall()
         
         if all_subs:
             sub_options = {f"[{sub[0]}] {sub[1]} - {sub[2][:40]}... ({sub[3]})": sub for sub in all_subs}
-            chosen = st.selectbox("Chọn bài nộp để thẩm định:", list(sub_options.keys()))
+            chosen = st.selectbox("Chọn bài nộp cần xem hoặc xoá:", list(sub_options.keys()))
             selected_sub = sub_options[chosen]
             
-            st.markdown(f"#### 👤 Học sinh: **{selected_sub[1]}** | Ngày nộp: **{selected_sub[3]}**")
-            st.info(f"**Đề bài:** {selected_sub[2]}")
+            col_info, col_del = st.columns([4, 1])
+            with col_info:
+                st.markdown(f"#### 👤 Học sinh: **{selected_sub[1]}** | Ngày nộp: **{selected_sub[3]}**")
+                st.info(f"**Đề bài:** {selected_sub[2]}")
+            with col_del:
+                st.write("")
+                st.write("")
+                # Nút xoá bài nộp được chọn
+                if st.button("🗑️ Xoá bài này", type="secondary", use_container_width=True):
+                    c.execute("DELETE FROM submissions WHERE id = ?", (selected_sub[0],))
+                    conn.commit()
+                    st.success(f"Đã xoá thành công bài nộp mã #{selected_sub[0]}!")
+                    st.rerun()
             
             with st.expander("📄 Xem bài viết nguyên bản của học sinh"):
                 st.text(selected_sub[5])
                 
             st.markdown("---")
-            st.markdown("### 📝 Toàn bộ kết quả chấm & Nhận xét của AI:")
+            st.markdown("### 📝 Kết quả chấm & Nhận xét của AI:")
             st.markdown(selected_sub[4])
+        else:
+            st.info("Không có bài nộp nào để hiển thị.")
 
+    # ---------------- TAB 3: QUẢN LÝ VÀ XOÁ HỌC SINH ----------------
     with t_tab3:
-        st.markdown("### 👥 Cấp tài khoản mới cho Học sinh")
-        with st.form("add_user_form"):
-            new_u = st.text_input("Tên đăng nhập (Username):", placeholder="Ví dụ: hs04")
-            new_p = st.text_input("Mật khẩu ban đầu:", value="123456")
-            new_name = st.text_input("Họ và tên học sinh:", placeholder="Ví dụ: Hoàng Minh Đức")
-            submit_btn = st.form_submit_button("Thêm học sinh vào danh sách")
-            if submit_btn:
-                if new_u and new_p and new_name:
-                    try:
-                        c.execute("INSERT INTO users VALUES (?, ?, ?, 'student')", (new_u, new_p, new_name))
-                        conn.commit()
-                        st.success(f"Đã cấp tài khoản thành công cho học sinh **{new_name}**!")
-                    except Exception:
-                        st.error("Tên đăng nhập này đã tồn tại!")
-                else:
-                    st.warning("Vui lòng điền đầy đủ thông tin.")
-                    
-        st.markdown("#### Danh sách tài khoản hiện có:")
-        c.execute("SELECT username, fullname, role FROM users")
-        st.dataframe(c.fetchall())
+        col_add, col_remove = st.columns(2)
         
-    conn.close()
+        with col_add:
+            st.markdown("### ➕ Cấp tài khoản mới")
+            with st.form("add_user_form"):
+                new_u = st.text_input("Tên đăng nhập (Username):", placeholder="Ví dụ: hs04")
+                new_p = st.text_input("Mật khẩu ban đầu:", value="123456")
+                new_name = st.text_input("Họ và tên học sinh:", placeholder="Ví dụ: Hoàng Minh Đức")
+                submit_btn = st.form_submit_button("Thêm học sinh vào danh sách", type="primary")
+                if submit_btn:
+                    if new_u and new_p and new_name:
+                        try:
+                            c.execute("INSERT INTO users VALUES (?, ?, ?, 'student')", (new_u.strip(), new_p.strip(), new_name.strip()))
+                            conn.commit()
+                            st.success(f"Đã tạo tài khoản cho **{new_name}**!")
+                            st.rerun()
+                        except Exception:
+                            st.error("Tên đăng nhập này đã tồn tại!")
+                    else:
+                        st.warning("Vui lòng nhập đầy đủ thông tin.")
+                        
+        with col_remove:
+            st.markdown("### ❌ Xoá tài khoản Học sinh")
+            c.execute("SELECT username, fullname FROM users WHERE role = 'student'")
+            students = c.fetchall()
+            
+            if students:
+                student_dict = {f"{s[1]} ({s[0]})": s[0] for s in students}
+                target_student = st.selectbox("Chọn học sinh cần xoá:", list(student_dict.keys()))
+                student_user_to_delete = student_dict[target_student]
+                
+                confirm_del = st.checkbox(f"Xác nhận xoá toàn bộ dữ liệu của học sinh này")
+                if st.button("🗑️ Xoá vĩnh viễn học sinh", type="primary", disabled=not confirm_del):
+                    # Xoá bài nộp liên quan trước
+                    c.execute("DELETE FROM submissions WHERE username = ?", (student_user_to_delete,))
+                    # Xoá tài khoản
+                    c.execute("DELETE FROM users WHERE username = ?", (student_user_to_delete,))
+                    conn.commit()
+                    st.success(f"Đã xoá học sinh {target_student} và toàn bộ bài nộp liên quan!")
+                    st.rerun()
+            else:
+                st.info("Chưa có học sinh nào trong danh sách.")
+
+        st.markdown("---")
+        st.markdown("#### 📋 Danh sách tài khoản hiện tại:")
+        c.execute("SELECT username as 'Tên đăng nhập', fullname as 'Họ và tên', role as 'Vai trò' FROM users")
+        current_users = c.fetchall()
+        st.table([{"Tên đăng nhập": u[0], "Họ và tên": u[1], "Vai trò": "Giáo viên" if u[2] == "teacher" else "Học sinh"} for u in current_users])
+        
+       conn.close()
