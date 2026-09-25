@@ -1,6 +1,5 @@
 import streamlit as st
 import sqlite3
-import pandas as pd
 from datetime import datetime
 from google import genai
 from google.genai import types
@@ -21,7 +20,6 @@ st.set_page_config(
 
 DEFAULT_API_KEYS = []
 
-# Khối thông tin Tác giả hiển thị dùng chung
 AUTHOR_INFO_MARKDOWN = """
 **Tác giả:**
 * **1. Đàm Thuận Minh Bình**  
@@ -29,14 +27,13 @@ AUTHOR_INFO_MARKDOWN = """
 * **2. Đỗ Thị Huyền**  
   📞 0982.036.952
 
-🏫 *Trường THCS Thân Nhân Trung - P. Việt Yên - TP. Bắc Ninh*
+🏫 *Trường THCS Thân Nhân Trung - TP. Bắc Ninh*
 """
 
 # HÀM TẠO FILE DOCX CHUẨN THỂ THỨC (TIMES NEW ROMAN, CỠ 13PT, LỀ TRÁI 3CM, CÒN LẠI 2CM)
 def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md):
     doc = Document()
     
-    # Thiết lập lề trang chuẩn hành chính: Trái 3.0cm, Trên/Dưới/Phải 2.0cm
     sections = doc.sections
     for section in sections:
         section.top_margin = Inches(0.79)     # 2.0 cm
@@ -49,25 +46,25 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md)
     font.name = 'Times New Roman'
     font.size = Pt(13)
     font.color.rgb = RGBColor(0x11, 0x11, 0x11)
-      
-    # Tiêu đề
+    
+    # Tiêu đề chính
     p_title = doc.add_paragraph()
     p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p_title.paragraph_format.space_before = Pt(16)
-    p_title.paragraph_format.space_after = Pt(12)
+    p_title.paragraph_format.space_before = Pt(6)
+    p_title.paragraph_format.space_after = Pt(14)
     r_t = p_title.add_run("PHIẾU ĐÁNH GIÁ & NHẬN XÉT BÀI THI ESSAY")
     r_t.bold = True
-    r_t.font.size = Pt(15)
+    r_t.font.size = Pt(16)
     r_t.font.color.rgb = RGBColor(0x0b, 0x3c, 0x5d)
     
     # Thông tin bài nộp
     p_meta = doc.add_paragraph()
     p_meta.paragraph_format.line_spacing = 1.25
-    p_meta.add_run(f"• Học sinh: ").bold = True
+    p_meta.add_run("• Học sinh: ").bold = True
     p_meta.add_run(f"{student_name}\n")
-    p_meta.add_run(f"• Thời gian nộp bài: ").bold = True
+    p_meta.add_run("• Thời gian nộp bài: ").bold = True
     p_meta.add_run(f"{date_str}\n")
-    p_meta.add_run(f"• Đề thi: ").bold = True
+    p_meta.add_run("• Đề thi: ").bold = True
     p_meta.add_run(f"{topic}\n")
     
     # Bài làm
@@ -233,58 +230,56 @@ DE_THI_BAC_NINH = [
     "Chuyên Bắc Ninh 2024-2025: 'Using social platforms such as Youtube, Tiktok, Facebook and Twitter is the best way for youngsters to gain fame and wealth.' To what extent do you agree or disagree?"
 ]
 
-# 4. Huấn luyện System Instruction chuẩn Barem 2.0 & Linh hoạt đa dạng đề thi HSG
+# 4. Huấn luyện System Instruction chuẩn Barem 2.0 Bắc Ninh (Chuẩn 250 từ)
 SYSTEM_INSTRUCTION = """
 You are an authoritative chief examiner for the English Gifted Student Examination (Kỳ thi Chọn Học sinh Giỏi Tỉnh & Chuyên Anh lớp 9) in Bac Ninh Province, Vietnam.
 
 Your mission is to enforce academic rigor and discipline:
-- Accurately categorize ANY academic essay prompt.
-- Evaluate according to the standard academic essay criteria corresponding to that exact essay type.
+- Accurately categorize ANY academic essay prompt (Opinion, Discussion, Cause-Effect-Solution, Advantages-Disadvantages, Two-part question).
+- Evaluate according to the standard academic criteria of that specific essay type.
 - Enforce the official Bac Ninh 2.0-point rubric with strict penalties for Task Drift / Off-topic.
+- Enforce length standard: The required standard length is around 250 words (at least 250 words). Penalize Content/Organization if under length (< 230 words).
 
 ============================================================
 I. COMPREHENSIVE ESSAY TYPE CLASSIFICATION & STRUCTURAL AUDIT:
 
 1. OPINION / ARGUMENTATIVE ESSAY ("To what extent do you agree or disagree?"):
-   - Goal: Adopt and defend a clear stance throughout.
-   - Body: Claim -> Explanation/Mechanism -> Concrete Evidence -> Implication/Counterargument (Concession & Rebuttal).
+   - Clear stance maintained; Body paragraphs follow: Claim -> Mechanism (Why/How) -> Concrete Evidence -> Implication/Counterargument.
 
 2. DISCUSSION ESSAY ("Discuss both views and give your opinion"):
-   - Goal: Fairly analyze both sides before concluding a well-reasoned judgment.
-   - Body: View 1 (Claim + Mechanism + Example) vs View 2 (Claim + Mechanism + Example + Student's Stance).
+   - Balanced, objective analysis of View 1 and View 2 before drawing a reasoned personal conclusion.
 
-3. CAUSE - EFFECT - SOLUTION ESSAY ("What are the causes/problems? What solutions can be proposed?"):
-   - Goal: Explain underlying root mechanisms (Why it happens) and actionable, targeted interventions.
-   - Body: Paragraph 1 on Causes/Effects (Root Causes -> Mechanisms -> Manifestations); Paragraph 2 on Feasible Solutions (Actor -> Action -> Expected Impact).
+3. CAUSE - EFFECT - SOLUTION ESSAY ("Causes/Problems and Solutions"):
+   - Body Paragraph 1: Root Causes/Mechanisms; Body Paragraph 2: Feasible, targeted solutions with expected impacts.
 
-4. ADVANTAGES & DISADVANTAGES ESSAY ("Do the benefits outweigh the drawbacks?"):
-   - Goal: Objectively evaluate pros vs cons with clear comparative weight.
-   - Body: Paragraph 1 on Advantages; Paragraph 2 on Disadvantages; Explicit comparative weighting.
+4. ADVANTAGES & DISADVANTAGES ESSAY ("Do advantages outweigh disadvantages?"):
+   - Objective evaluation of pros vs cons with explicit comparative weighting.
 
 5. TWO-PART / DIRECT QUESTION ESSAY:
-   - Goal: Directly and thoroughly answer both distinct sub-questions posed by the prompt.
+   - Thoroughly address both prompt questions with clear paragraph division.
 
 ============================================================
 II. CRITICAL SCORING CEILINGS & DISQUALIFYING ERRORS:
 
-1. TASK DRIFT / OFF-TOPIC / TANGENTIAL RESPONSE:
+1. TASK DRIFT / OFF-TOPIC / UNDERLENGTH:
    - Completely Off-topic: Content capped at 0.00 - 0.10 / 0.70.
-   - Task Drift / Missing Key Qualifiers (e.g., ignoring 'the best way', 'causes', or answering only 1 of 2 questions): Content MUST BE CAPPED at 0.15 - 0.25 / 0.70.
-   - Consequence: Organization capped at 0.25 / 0.60 due to broken logical cohesion.
+   - Task Drift / Missing Key Qualifiers: Content MUST BE CAPPED at 0.15 - 0.25 / 0.70.
+   - Short Essay (< 230 words compared to the 250-word standard): Deduct 0.10 - 0.15 from Content due to underdeveloped arguments.
+   - Associated Penalty: Organization capped at 0.25 / 0.60 if reasoning is incomplete or invalid.
 
 2. SEVEN RED FLAGS TO PENALIZE:
-   - Idea Dumping: Listing points without explanatory mechanism (Why/How) -> Deduct Content.
-   - Examples without Analysis: Substituting facts for logical arguments -> Deduct Content.
+   - Idea Dumping without mechanisms -> Deduct Content.
+   - Examples without Analysis -> Deduct Content.
    - Repetition / Circular Reasoning -> Deduct Organization.
    - Memorized Robotic Templates -> Deduct Organization & Language.
-   - Overclaiming without Hedging ("always", "completely impossible") -> Deduct Language.
-   - Hallucinated / Fabricated Collocations -> Deduct Language strictly down to 0.20 - 0.30 / 0.60.
-   - Mechanics: Informal contractions ("don't", "isn't", "can't") or basic misspellings -> Deduct Mechanics down to 0.00 - 0.04 / 0.10.
+   - Overclaiming without Hedging -> Deduct Language.
+   - Fabricated Collocations -> Deduct Language strictly down to 0.20 - 0.30 / 0.60.
+   - Mechanics: Informal contractions ("don't", "isn't") or basic misspellings -> Deduct Mechanics down to 0.00 - 0.04 / 0.10.
 
 ============================================================
 III. OFFICIAL BAC NINH 2.0-POINT RUBRIC:
 1. Content (0.70 max): Full prompt coverage, task response, logical mechanisms, depth.
-2. Organization & Presentation (0.60 max): Logical coherence, clear 4-paragraph structure, organic progression.
+2. Organization & Presentation (0.60 max): Logical coherence, 4-paragraph structure, progression.
 3. Language (0.60 max): Natural vocabulary range, precise collocations, grammatical range & accuracy.
 4. Mechanics (0.10 max): Punctuation, spelling, capitalisation, zero contractions.
 
@@ -293,14 +288,14 @@ IV. REQUIRED OUTPUT FORMAT:
 
 ### 1. 📋 ĐÁNH GIÁ TỔNG QUAN & DẠNG BÀI
 - **Thể loại bài viết nhận diện:** [Opinion / Discussion / Cause-Solution / Advantages-Disadvantages / Two-Part Question]
-- **Kiểm định Trọng tâm đề thi (Task Response Audit):** [Trúng đề / Lệch trọng tâm / Lạc đề hoàn toàn - Nêu rõ đối chiếu với tất cả yêu cầu của đề].
-- **Số lượng từ:** [Số từ] từ (Chuẩn đề: 200–250 từ).
+- **Kiểm định Trọng tâm đề thi (Task Response Audit):** [Trúng đề / Lệch trọng tâm / Lạc đề hoàn toàn - Nêu rõ lý do].
+- **Số lượng từ:** [Số từ] từ (Chuẩn đề thi: khoảng 250 từ).
 - **Soi xét Lịch sử cá nhân hóa:** [Nhận xét học sinh có tái phạm các lỗi cũ hay đã có cải thiện cụ thể nào].
 
 ### 2. 📊 BẢNG ĐIỂM CHÍNH THỨC SỞ GD&ĐT BẮC NINH (THANG 2.0)
 | Tiêu chí thành phần | Điểm tối đa | Điểm đạt | Nhận xét chi tiết của Giám khảo |
 | :--- | :---: | :---: | :--- |
-| **1. Content** (Ý tưởng & Lập luận) | 0.70 | **...** | Đánh giá độ phủ yêu cầu đề bài; áp trần điểm nếu Task Drift hoặc Idea Dumping. |
+| **1. Content** (Ý tưởng & Lập luận) | 0.70 | **...** | Đánh giá độ phủ đề bài, chuẩn 250 từ; phạt trần điểm nếu Task Drift hoặc thiếu ý. |
 | **2. Organization** (Bố cục & Mạch lạc) | 0.60 | **...** | Đánh giá bố cục chuẩn theo dạng bài; mạch liên kết logic. |
 | **3. Language** (Từ vựng & Ngữ pháp) | 0.60 | **...** | Bắt lỗi collocation tự chế, câu gượng ép, văn phong thiếu học thuật. |
 | **4. Mechanics** (Chính tả & Thể thức) | 0.10 | **...** | Trừ thẳng tay nếu có từ viết tắt hoặc sai chính tả cơ bản. |
@@ -312,17 +307,17 @@ IV. REQUIRED OUTPUT FORMAT:
 |---|---|---|
 
 ### 4. 💎 NÂNG CẤP TỪ VỰNG & NGỮ PHÁP THEN CHỐT
-- 4–5 cụm collocations đắt giá bám sát đúng chủ đề và dạng bài của đề.
+- 4–5 cụm collocations đắt giá bám sát đúng chủ đề và dạng bài.
 
-### 5. ✍️ BÀI VIẾT MẪU THAM KHẢO THEO 2 CẤP ĐỘ (200–230 TỪ)
+### 5. ✍️ BÀI VIẾT MẪU THAM KHẢO THEO 2 CẤP ĐỘ (CHUẨN 250 TỪ)
 
 #### 🔹 Cấp độ 1: Bản Nền tảng & Dễ tiếp thu (Mức độ B1 đến B1+ - Mọi học sinh đều học và nhớ được)
-- **Đặc điểm:** Bố cục chuẩn theo dạng bài này, câu từ ngắn gọn, ngữ pháp tuyệt đối chuẩn, từ vựng quen thuộc, dễ tiếp thu và dễ vận dụng trong phòng thi.
-[Viết toàn bài essay mẫu hoàn chỉnh Cấp độ B1-B1+ bám sát đúng dạng bài của đề tại đây]
+- **Đặc điểm:** Độ dài chuẩn ~250 từ, bố cục chuẩn theo dạng bài, câu từ ngắn gọn, ngữ pháp tuyệt đối chuẩn, từ vựng quen thuộc, dễ tiếp thu và dễ vận dụng trong phòng thi.
+[Viết toàn bài essay mẫu hoàn chỉnh Cấp độ B1-B1+ chuẩn 250 từ bám sát đề tại đây]
 
 #### 🔸 Cấp độ 2: Bản Nâng cao & Bứt phá điểm số (Học thuật C1-C2 - Dành cho đội tuyển chuyên sâu)
-- **Đặc điểm:** Văn phong học thuật, sử dụng cụm từ chuyên sâu, cấu trúc câu phức hợp, kỹ thuật Hedging và phân tích sắc sảo.
-[Viết toàn bài essay mẫu hoàn chỉnh Cấp độ C1-C2 bám sát đúng dạng bài của đề tại đây]
+- **Đặc điểm:** Độ dài chuẩn ~250 từ, văn phong học thuật trang trọng, collocations chuyên sâu, câu phức hợp, kỹ thuật Hedging và phân tích đa chiều.
+[Viết toàn bài essay mẫu hoàn chỉnh Cấp độ C1-C2 chuẩn 250 từ bám sát đề tại đây]
 
 ### 6. ⚠️ DANH SÁCH LỖI THEN CHỐT CẦN LƯU HỒ SƠ:
 (Ghi 1-3 lỗi cốt lõi ngắn gọn để lưu vào hệ thống theo dõi cá nhân).
@@ -438,7 +433,7 @@ if user["role"] == "student":
         with sub_tab1:
             essay_text = st.text_area("Nội dung bài viết:", height=250, placeholder="Gõ hoặc dán toàn bộ bài làm của em tại đây...")
             if essay_text:
-                st.write(f"📏 Số từ: **{len(essay_text.split())} từ** (Độ dài chuẩn: 200–250 từ)")
+                st.write(f"📏 Số từ: **{len(essay_text.split())} từ** (Chuẩn đề thi: **250 từ**)")
                 
         with sub_tab2:
             uploaded_file = st.file_uploader("Tải lên ảnh bài viết tay:", type=["png", "jpg", "jpeg"])
@@ -515,12 +510,11 @@ if user["role"] == "student":
                     else:
                         st.error(f"Hệ thống gặp sự cố khi chấm bài. Chi tiết: {last_err}")
 
-        # KHU VỰC HIỂN THỊ KẾT QUẢ VÀ NÚT TẢI FILE CỐ ĐỊNH
+        # KHU VỰC HIỂN THỊ KẾT QUẢ VÀ NÚT TẢI FILE WORD CỐ ĐỊNH
         if st.session_state.last_graded_result:
             res = st.session_state.last_graded_result
             st.success("✅ ĐÃ CHẤM XONG BÀI THI!")
             
-            # Nút tải file Word đặt nổi bật ở đầu
             try:
                 docx_bytes = generate_docx_report(user['fullname'], res['date_str'], res['topic'], res['essay_text'], res['result_text'])
                 st.download_button(
@@ -638,7 +632,6 @@ elif user["role"] == "teacher":
                     st.success(f"Đã xoá thành công bài nộp mã #{selected_sub[0]}!")
                     st.rerun()
             
-            # Nút tải file Word dành riêng cho Giáo viên
             try:
                 t_docx = generate_docx_report(selected_sub[1], selected_sub[3], selected_sub[2], selected_sub[5], selected_sub[4])
                 st.download_button(
@@ -661,13 +654,12 @@ elif user["role"] == "teacher":
         else:
             st.info("Không có bài nộp nào để hiển thị.")
 
-    # TAB 3: QUẢN LÝ & CẤP TÀI KHOẢN HỌC SINH
+    # TAB 3: QUẢN LÝ VÀ CẤP TÀI KHOẢN HỌC SINH (HỖ TRỢ FILE EXCEL)
     with t_tab3:
         st.markdown("### 📂 Cấp tài khoản hàng loạt từ file Excel")
-        st.caption("File Excel chỉ cần có 2 cột bất kỳ (Cột 1 là Mã học sinh/Username, Cột 2 là Họ và tên học sinh). Mật khẩu mặc định tạo ra sẽ là: 123456")
+        st.caption("File Excel gồm 2 cột: Cột 1 là Mã học sinh (Username), Cột 2 là Họ và tên. Mật khẩu khởi tạo chung: 123456")
         
         uploaded_excel = st.file_uploader("Chọn file Excel danh sách học sinh (.xlsx, .xls):", type=["xlsx", "xls"])
-        
         if uploaded_excel is not None:
             try:
                 import pandas as pd
@@ -675,41 +667,35 @@ elif user["role"] == "teacher":
                 if df.shape[1] < 2:
                     st.error("File Excel cần có ít nhất 2 cột: Cột 1 là Mã HS và Cột 2 là Họ tên.")
                 else:
-                    st.write("👀 **Xem trước dữ liệu trích xuất từ file Excel:**")
                     preview_df = df.iloc[:, :2].dropna()
                     preview_df.columns = ["Mã học sinh", "Họ và tên"]
                     st.dataframe(preview_df.head(10), use_container_width=True)
                     
-                    if st.button("🚀 Xác nhận tạo tài khoản cho toàn bộ danh sách trên", type="primary"):
+                    if st.button("🚀 Xác nhận tạo tài khoản cho danh sách trên", type="primary"):
                         created_count = 0
                         skipped_count = 0
-                        
                         for _, row in preview_df.iterrows():
                             u_code = str(row["Mã học sinh"]).strip()
-                            # Loại bỏ số thập phân nếu mã bị định dạng dạng số thực trong Excel (ví dụ 101.0 -> 101)
                             if u_code.endswith(".0"):
                                 u_code = u_code[:-2]
                             fullname = str(row["Họ và tên"]).strip()
-                            
                             if u_code and fullname and u_code != "nan" and fullname != "nan":
                                 try:
                                     c.execute("INSERT INTO users VALUES (?, '123456', ?, 'student')", (u_code, fullname))
                                     created_count += 1
                                 except sqlite3.IntegrityError:
-                                    # Trùng username đã có trong database
                                     skipped_count += 1
-                                    
                         conn.commit()
-                        st.success(f"🎉 Hoàn tất! Đã thêm thành công **{created_count}** tài khoản mới. (Bỏ qua {skipped_count} tài khoản bị trùng lặp mã).")
+                        st.success(f"🎉 Hoàn tất! Đã thêm thành công **{created_count}** học sinh mới (Bỏ qua {skipped_count} tài khoản bị trùng).")
                         st.rerun()
             except Exception as ex:
                 st.error(f"Lỗi khi đọc file Excel: {str(ex)}")
 
         st.markdown("---")
-        
         col_add, col_remove = st.columns(2)
+        
         with col_add:
-            st.markdown("### ➕ Thêm thủ công từng học sinh")
+            st.markdown("### ➕ Cấp thủ công 1 tài khoản")
             with st.form("add_user_form"):
                 new_u = st.text_input("Tên đăng nhập (Username):", placeholder="Ví dụ: hs04")
                 new_p = st.text_input("Mật khẩu ban đầu:", value="123456")
