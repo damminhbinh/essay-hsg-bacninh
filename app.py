@@ -138,8 +138,15 @@ IV. REQUIRED OUTPUT FORMAT:
 - 4–5 cụm collocations C1 đắt giá sửa chữa đúng trọng tâm của đề.
 - Kỹ thuật Hedging / Qualified Language để tránh Overclaiming.
 
-### 5. ✍️ BÀI VIẾT LẠI MẪU ĐỈNH CAO
-(Viết lại đoạn văn yếu nhất hoặc toàn bài theo chuẩn cấu trúc tập huấn, bám sát trọng tâm câu hỏi của đề).
+### 5. ✍️ BÀI VIẾT MẪU THAM KHẢO THEO 2 CẤP ĐỘ (200–230 TỪ)
+
+#### 🔹 Cấp độ 1: Bản Nền tảng & Dễ tiếp thu (Chuẩn mực B2 - Dành cho mọi đối tượng HSG)
+- **Đặc điểm:** Bố cục 4 đoạn rõ ràng, lập luận mạch lạc, câu văn ngắn gọn, dễ hiểu, từ vựng tự nhiên và chuẩn xác, không dùng từ ngữ quá hàn lâm/học thuật nặng nề để học sinh dễ nhớ và áp dụng ngay trong phòng thi.
+[Viết toàn bài essay mẫu Cấp độ 1 tại đây]
+
+#### 🔸 Cấp độ 2: Bản Nâng cao & Bứt phá điểm số (Học thuật C1-C2 - Dành cho đội tuyển chuyên sâu)
+- **Đặc điểm:** Văn phong trang trọng, sử dụng các cụm collocation đắt giá, kỹ thuật Hedging, liên kết câu phức hợp và phân tích đa chiều để đạt điểm tuyệt đối về tiêu chí Language và Content.
+[Viết toàn bài essay mẫu Cấp độ 2 tại đây]
 
 ### 6. ⚠️ DANH SÁCH LỖI THEN CHỐT CẦN LƯU HỒ SƠ:
 (Ghi 1-3 lỗi cốt lõi ngắn gọn để ghi vào CSDL theo dõi cá nhân, ví dụ: "Task Drift", "Thiếu Mechanism", "Collocation tự chế", "Dùng từ viết tắt").
