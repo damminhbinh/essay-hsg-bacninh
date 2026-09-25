@@ -18,10 +18,8 @@ st.set_page_config(
     layout="wide"
 )
 
-# Danh sách API Keys nội bộ (để trống để bảo mật với GitHub)
 DEFAULT_API_KEYS = []
 
-# Khối thông tin Tác giả hiển thị dùng chung
 AUTHOR_INFO_MARKDOWN = """
 **Tác giả:**
 * **1. Đàm Thuận Minh Bình** - 📞 0387.136.888
@@ -30,172 +28,181 @@ AUTHOR_INFO_MARKDOWN = """
 *🏫 Trường THCS Thân Nhân Trung - TP. Bắc Ninh*
 """
 
-# HÀM TẠO FILE PDF CHUẨN THỂ THỨC (TIMES NEW ROMAN, CĂN LỀ 3CM - 2CM - 2CM - 2CM)
-def generate_pdf_report(student_name, date_str, topic, essay_text, feedback_md):
-    # Chuyển đổi Markdown sang HTML
-    feedback_html = markdown.markdown(feedback_md, extensions=['tables', 'fenced_code'])
-    essay_clean = essay_text.replace('\n', '<br>') if essay_text else "<i>(Bài làm dạng ảnh viết tay đã được AI thẩm định)</i>"
+# HÀM TẠO FILE DOCX CHUẨN THỂ THỨC (TIMES NEW ROMAN, CỠ 13PT, LỀ TRÁI 3CM, CÒN LẠI 2CM)
+def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md):
+    doc = Document()
+    
+    # Thiết lập lề trang chuẩn hành chính: Trái 3.0cm, Trên/Dưới/Phải 2.0cm
+    sections = doc.sections
+    for section in sections:
+        section.top_margin = Inches(0.79)     # 2.0 cm
+        section.bottom_margin = Inches(0.79)  # 2.0 cm
+        section.left_margin = Inches(1.18)    # 3.0 cm
+        section.right_margin = Inches(0.79)   # 2.0 cm
+        
+    style = doc.styles['Normal']
+    font = style.font
+    font.name = 'Times New Roman'
+    font.size = Pt(13)
+    font.color.rgb = RGBColor(0x11, 0x11, 0x11)
+    
+    # Tiêu ngữ
+    head_table = doc.add_table(rows=1, cols=2)
+    head_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    head_table.autofit = False
+    
+    cell_left = head_table.cell(0, 0)
+    p_left = cell_left.paragraphs[0]
+    p_left.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r1 = p_left.add_run("TRƯỜNG THCS THÂN NHÂN TRUNG\n")
+    r1.bold = True
+    r1.font.size = Pt(12)
+    r2 = p_left.add_run("ĐỘI TUYỂN HSG TIẾNG ANH 9")
+    r2.font.size = Pt(11)
+    
+    cell_right = head_table.cell(0, 1)
+    p_right = cell_right.paragraphs[0]
+    p_right.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r3 = p_right.add_run("CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\n")
+    r3.bold = True
+    r3.font.size = Pt(12)
+    r4 = p_right.add_run("Độc lập - Tự do - Hạnh phúc")
+    r4.font.size = Pt(11)
+    r4.underline = True
+    
+    # Tiêu đề
+    p_title = doc.add_paragraph()
+    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_title.paragraph_format.space_before = Pt(16)
+    p_title.paragraph_format.space_after = Pt(12)
+    r_t = p_title.add_run("PHIẾU ĐÁNH GIÁ & NHẬN XÉT BÀI THI ESSAY")
+    r_t.bold = True
+    r_t.font.size = Pt(15)
+    r_t.font.color.rgb = RGBColor(0x0b, 0x3c, 0x5d)
+    
+    # Thông tin bài nộp
+    p_meta = doc.add_paragraph()
+    p_meta.paragraph_format.line_spacing = 1.25
+    p_meta.add_run(f"• Học sinh: ").bold = True
+    p_meta.add_run(f"{student_name}\n")
+    p_meta.add_run(f"• Thời gian nộp bài: ").bold = True
+    p_meta.add_run(f"{date_str}\n")
+    p_meta.add_run(f"• Đề thi: ").bold = True
+    p_meta.add_run(f"{topic}\n")
+    
+    # Bài làm
+    h1 = doc.add_heading("I. NỘI DUNG BÀI LÀM CỦA HỌC SINH", level=2)
+    for r in h1.runs:
+        r.font.name = 'Times New Roman'
+        r.font.size = Pt(13.5)
+        r.font.color.rgb = RGBColor(0x0b, 0x3c, 0x5d)
+        
+    p_essay = doc.add_paragraph()
+    p_essay.paragraph_format.left_indent = Inches(0.2)
+    p_essay.paragraph_format.line_spacing = 1.25
+    p_essay.add_run(essay_text if essay_text else "(Bài nộp qua hình ảnh viết tay)")
+    
+    # Nhận xét chi tiết
+    h2 = doc.add_heading("II. ĐÁNH GIÁ CHI TIẾT & BÀI MẪU THAM KHẢO", level=2)
+    for r in h2.runs:
+        r.font.name = 'Times New Roman'
+        r.font.size = Pt(13.5)
+        r.font.color.rgb = RGBColor(0x0b, 0x3c, 0x5d)
+        
+    lines = feedback_md.split('\n')
+    in_table = False
+    table_lines = []
+    
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('|') and stripped.endswith('|'):
+            in_table = True
+            table_lines.append(stripped)
+            continue
+        else:
+            if in_table:
+                rows_data = [l for l in table_lines if not re.match(r'^\|[\s\-:|]+\|$', l)]
+                if rows_data:
+                    parsed_rows = [[c.strip() for c in r.strip('|').split('|')] for r in rows_data]
+                    cols_count = max(len(r) for r in parsed_rows)
+                    t = doc.add_table(rows=len(parsed_rows), cols=cols_count)
+                    t.alignment = WD_TABLE_ALIGNMENT.CENTER
+                    for r_idx, row in enumerate(parsed_rows):
+                        for c_idx, val in enumerate(row):
+                            if c_idx < cols_count:
+                                cell = t.cell(r_idx, c_idx)
+                                cell.text = val
+                                for p in cell.paragraphs:
+                                    p.paragraph_format.line_spacing = 1.15
+                                    for r in p.runs:
+                                        r.font.name = 'Times New Roman'
+                                        r.font.size = Pt(11)
+                                        if r_idx == 0:
+                                            r.bold = True
+                in_table = False
+                table_lines = []
+                
+            if not stripped:
+                continue
+                
+            p = doc.add_paragraph()
+            p.paragraph_format.line_spacing = 1.25
+            clean_line = stripped
+            is_bold = False
+            
+            if clean_line.startswith('### '):
+                clean_line = clean_line[4:]
+                is_bold = True
+            elif clean_line.startswith('#### '):
+                clean_line = clean_line[5:]
+                is_bold = True
+            elif clean_line.startswith('#'):
+                clean_line = clean_line.lstrip('#').strip()
+                is_bold = True
+                
+            parts = re.split(r'(\*\*.*?\*\*)', clean_line)
+            for part in parts:
+                if part.startswith('**') and part.endswith('**'):
+                    run = p.add_run(part[2:-2])
+                    run.bold = True
+                else:
+                    run = p.add_run(part)
+                    if is_bold:
+                        run.bold = True
+                run.font.name = 'Times New Roman'
+                run.font.size = Pt(13)
 
-    html_template = f"""
-    <!DOCTYPE html>
-    <html lang="vi">
-    <head>
-        <meta charset="utf-8">
-        <style>
-            @page {{
-                size: A4;
-                margin-top: 2.0cm;
-                margin-bottom: 2.0cm;
-                margin-left: 3.0cm;
-                margin-right: 2.0cm;
-                @bottom-right {{
-                    content: "Trang " counter(page) " / " counter(pages);
-                    font-family: "Times New Roman", Times, serif;
-                    font-size: 11pt;
-                }}
-            }}
-            body {{
-                font-family: "Times New Roman", Times, serif;
-                font-size: 13pt;
-                line-height: 1.35;
-                color: #111111;
-                text-align: justify;
-            }}
-            .header-table {{
-                width: 100%;
-                border-collapse: collapse;
-                margin-bottom: 15px;
-            }}
-            .header-table td {{
-                border: none;
-                vertical-align: top;
-                padding: 0;
-            }}
-            .main-title {{
-                text-align: center;
-                font-size: 15pt;
-                font-weight: bold;
-                text-transform: uppercase;
-                margin-top: 10px;
-                margin-bottom: 15px;
-                color: #0b3c5d;
-            }}
-            .meta-box {{
-                background-color: #f7f9fa;
-                border-left: 4px solid #0b3c5d;
-                padding: 10px 14px;
-                margin-bottom: 20px;
-                font-size: 12.5pt;
-            }}
-            .meta-box p {{
-                margin: 4px 0;
-            }}
-            h2, h3, h4 {{
-                font-family: "Times New Roman", Times, serif;
-                color: #0b3c5d;
-                margin-top: 18px;
-                margin-bottom: 8px;
-            }}
-            h2 {{ font-size: 14pt; border-bottom: 1.5px solid #0b3c5d; padding-bottom: 4px; }}
-            h3 {{ font-size: 13.5pt; }}
-            h4 {{ font-size: 13pt; }}
-            table {{
-                width: 100%;
-                border-collapse: collapse;
-                margin: 14px 0;
-                font-size: 12pt;
-            }}
-            table, th, td {{
-                border: 1px solid #333333;
-            }}
-            th {{
-                background-color: #e9ecef;
-                font-weight: bold;
-                text-align: center;
-                padding: 8px 6px;
-            }}
-            td {{
-                padding: 7px 8px;
-                vertical-align: top;
-            }}
-            .essay-box {{
-                background-color: #ffffff;
-                border: 1px dashed #666666;
-                padding: 12px;
-                margin-bottom: 15px;
-                font-style: normal;
-            }}
-            .signature-section {{
-                width: 100%;
-                margin-top: 30px;
-                page-break-inside: avoid;
-            }}
-            .signature-table {{
-                width: 100%;
-                border: none;
-            }}
-            .signature-table td {{
-                border: none;
-                width: 50%;
-                text-align: center;
-                vertical-align: top;
-                padding: 0;
-            }}
-        </style>
-    </head>
-    <body>
-        <table class="header-table">
-            <tr>
-                <td style="text-align: center; width: 45%;">
-                    <span style="font-size: 12pt; font-weight: bold;">TRƯỜNG THCS THÂN NHÂN TRUNG</span><br>
-                    <span style="font-size: 11.5pt;">ĐỘI TUYỂN HSG TIẾNG ANH 9</span>
-                </td>
-                <td style="text-align: center; width: 55%;">
-                    <span style="font-size: 12pt; font-weight: bold;">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</span><br>
-                    <span style="font-size: 11.5pt; text-decoration: underline;">Độc lập - Tự do - Hạnh phúc</span>
-                </td>
-            </tr>
-        </table>
+    # Chữ ký Giáo viên căn phải
+    p_sig = doc.add_paragraph()
+    p_sig.paragraph_format.space_before = Pt(24)
+    sig_table = doc.add_table(rows=1, cols=2)
+    sig_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    c_sig = sig_table.cell(0, 1)
+    
+    p_s = c_sig.paragraphs[0]
+    p_s.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_s.paragraph_format.line_spacing = 1.2
+    
+    r_date = p_s.add_run("Bắc Ninh, ngày ..... tháng ..... năm 202...\n")
+    r_date.italic = True
+    r_date.font.size = Pt(12)
+    
+    r_role = p_s.add_run("GIÁO VIÊN BỒI DƯỠNG & CHẤM ĐIỂM\n\n\n\n\n")
+    r_role.bold = True
+    r_role.font.size = Pt(13)
+    
+    r_tname = p_s.add_run("Cô Đỗ Thị Huyền\n")
+    r_tname.bold = True
+    r_tname.font.size = Pt(13)
+    
+    r_tsch = p_s.add_run("Trường THCS Thân Nhân Trung\n📞 0982.036.952")
+    r_tsch.font.size = Pt(12)
+    
+    bio = io.BytesIO()
+    doc.save(bio)
+    return bio.getvalue()
 
-        <div class="main-title">PHIẾU ĐÁNH GIÁ & NHẬN XÉT BÀI THI ESSAY</div>
-
-        <div class="meta-box">
-            <p><strong>Học sinh:</strong> {student_name}</p>
-            <p><strong>Thời gian nộp bài:</strong> {date_str}</p>
-            <p><strong>Đề thi:</strong> {topic}</p>
-        </div>
-
-        <h2>I. NỘI DUNG BÀI LÀM CỦA HỌC SINH</h2>
-        <div class="essay-box">
-            {essay_clean}
-        </div>
-
-        <h2>II. KẾT QUẢ ĐÁNH GIÁ & PHÂN TÍCH CHUYÊN SÂU</h2>
-        <div>
-            {feedback_html}
-        </div>
-
-        <div class="signature-section">
-            <table class="signature-table">
-                <tr>
-                    <td></td>
-                    <td>
-                        <span style="font-style: italic; font-size: 12pt;">Bắc Ninh, ngày ..... tháng ..... năm 202...</span><br>
-                        <strong>GIÁO VIÊN BỒI DƯỠNG & CHẤM ĐIỂM</strong><br>
-                        <br><br><br><br>
-                        <strong>Cô Đỗ Thị Huyền</strong><br>
-                        <span>Trường THCS Thân Nhân Trung</span><br>
-                        <span>📞 0982.036.952</span>
-                    </td>
-                </tr>
-            </table>
-        </div>
-    </body>
-    </html>
-    """
-    return HTML(string=html_template).write_pdf()
-
-# 2. Quản lý Cơ sở dữ liệu SQLite
+# 2. Cơ sở dữ liệu SQLite
 def init_db():
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
@@ -234,7 +241,7 @@ def init_db():
 
 init_db()
 
-# 3. Ngân hàng đề thi Bắc Ninh
+# 3. Ngân hàng đề thi
 DE_THI_BAC_NINH = [
     "-- Tự nhập đề bài mới --",
     "HSG Tỉnh 2025-2026: Some people think that teenagers tend to be leading a less healthy life. To what extent do you agree or disagree?",
@@ -246,7 +253,7 @@ DE_THI_BAC_NINH = [
     "Chuyên Bắc Ninh 2024-2025: 'Using social platforms such as Youtube, Tiktok, Facebook and Twitter is the best way for youngsters to gain fame and wealth.' To what extent do you agree or disagree?"
 ]
 
-# 4. Huấn luyện System Instruction chuẩn Barem 2.0 & Biên bản tập huấn HSG Bắc Ninh
+# 4. Huấn luyện System Instruction chuẩn Barem 2.0 Bắc Ninh
 SYSTEM_INSTRUCTION = """
 You are an extremely strict, uncompromising, and highly authoritative chief examiner for the English Gifted Student Examination (Kỳ thi Chọn Học sinh Giỏi Tỉnh & Chuyên Anh lớp 9) in Bac Ninh Province, Vietnam.
 
@@ -273,22 +280,15 @@ I. CRITICAL SCORING CEILINGS & DISQUALIFYING ERRORS:
 
 ============================================================
 II. ESSAY TYPE DECODING RULES:
-A. DISCUSSIVE ESSAY ("Let me examine the debate"):
-- Purpose: Examine + Evaluate + Arrive at a reasoned, qualified judgement.
-- Body Paragraphs MUST strictly follow: CLAIM -> WHY (Reason) -> HOW (Mechanism) -> EXAMPLE -> EVALUATION (Conditions / Limitations).
-- Failure to evaluate limitations or conditions ("50-50 thinking") -> Cap Organization at 0.35 / 0.60.
-
-B. ARGUMENTATIVE ESSAY ("Let me convince you of my position"):
-- Purpose: Claim + Support + Defend.
-- Main Arguments: CLAIM -> REASON -> MECHANISM -> EXAMPLE -> IMPLICATION.
-- Counterargument: Must apply CONCEDE -> QUALIFY -> REBUT. Failing to rebut or taking an extreme, unhedged position -> Cap Content at 0.35 / 0.70.
+A. DISCUSSIVE ESSAY: Examine + Evaluate + Arrive at a reasoned judgement. Body: CLAIM -> WHY -> HOW -> EXAMPLE -> EVALUATION.
+B. ARGUMENTATIVE ESSAY: Claim + Support + Defend. Counterargument: CONCEDE -> QUALIFY -> REBUT.
 
 ============================================================
-III. OFFICIAL BAC NINH 2.0-POINT RUBRIC (STRICT SCORING - 0.05 INCREMENTS):
-1. Content (0.70 pt max): Full alignment with prompt, nuanced depth, clear mechanisms, no task drift.
-2. Organization & Presentation (0.60 pt max): Coherence, internal logic, 4-paragraph structure, no mechanical linkers.
-3. Language (0.60 pt max): Natural vocabulary range, authentic collocations, clear sentence structures. Zero tolerance for fabricated expressions.
-4. Mechanics (0.10 pt max): Punctuation, capitalization, zero spelling errors, NO contractions.
+III. OFFICIAL BAC NINH 2.0-POINT RUBRIC (STRICT SCORING):
+1. Content (0.70 pt max)
+2. Organization & Presentation (0.60 pt max)
+3. Language (0.60 pt max)
+4. Mechanics (0.10 pt max)
 
 ============================================================
 IV. REQUIRED OUTPUT FORMAT:
@@ -309,14 +309,12 @@ IV. REQUIRED OUTPUT FORMAT:
 | **TỔNG ĐIỂM BÀI THI** | **2.00** | **... / 2.0** | **Ước lượng band IELTS tương đương: ...** |
 
 ### 3. 🔍 SOI LỖI LẬP LUẬN THEO CHUYÊN ĐỀ TẬP HUẤN
-- Chỉ ra các đoạn khẳng định suông thiếu cơ chế (Mechanism), ngộ nhận logic hoặc đưa ví dụ thay cho lập luận.
 - **Bảng phân tích câu văn chi tiết:**
 | Câu văn gốc của học sinh | Lỗi sai (Tư duy / Ngữ pháp / Collocation) | Đề xuất sửa chữa nâng cao |
 |---|---|---|
 
 ### 4. 💎 NÂNG CẤP TỪ VỰNG & NGỮ PHÁP THEN CHỐT
 - 4–5 cụm collocations hữu ích sửa chữa đúng trọng tâm của đề.
-- Kỹ thuật diễn đạt điều kiện và lập luận chặt chẽ.
 
 ### 5. ✍️ BÀI VIẾT MẪU THAM KHẢO THEO 2 CẤP ĐỘ (200–230 TỪ)
 
@@ -329,13 +327,15 @@ IV. REQUIRED OUTPUT FORMAT:
 [Viết toàn bài essay mẫu hoàn chỉnh Cấp độ C1-C2 tại đây]
 
 ### 6. ⚠️ DANH SÁCH LỖI THEN CHỐT CẦN LƯU HỒ SƠ:
-(Ghi 1-3 lỗi cốt lõi ngắn gọn để ghi vào CSDL theo dõi cá nhân, ví dụ: "Task Drift", "Thiếu Mechanism", "Collocation tự chế", "Dùng từ viết tắt").
+(Ghi 1-3 lỗi cốt lõi ngắn gọn để ghi vào CSDL theo dõi cá nhân).
 """
 
-# Quản lý Đăng nhập
+# Quản lý Đăng nhập qua Session State
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user = None
+if "last_graded_result" not in st.session_state:
+    st.session_state.last_graded_result = None
 
 def login(username, password):
     conn = sqlite3.connect("essay_database.db")
@@ -353,6 +353,7 @@ def login(username, password):
 def logout():
     st.session_state.logged_in = False
     st.session_state.user = None
+    st.session_state.last_graded_result = None
     st.rerun()
 
 # MÀN HÌNH ĐĂNG NHẬP
@@ -497,23 +498,13 @@ if user["role"] == "student":
                             continue
 
                     if success:
-                        st.success("✅ Đã hoàn thành chấm bài!")
-                        st.markdown(result_text)
-                        
                         now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
-                        
-                        # Tạo file PDF chuẩn mực
-                        try:
-                            pdf_bytes = generate_pdf_report(user['fullname'], now_str, essay_prompt, essay_text, result_text)
-                            st.download_button(
-                                label="📥 Tải Phiếu Nhận Xét PDF Chuẩn (Có Chữ Ký Giáo Viên)",
-                                data=pdf_bytes,
-                                file_name=f"Phieu_Nhan_Xet_{user['username']}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                                mime="application/pdf",
-                                use_container_width=True
-                            )
-                        except Exception as pdf_err:
-                            st.warning(f"Không thể xuất PDF tự động (Vui lòng kiểm tra requirements.txt): {pdf_err}")
+                        st.session_state.last_graded_result = {
+                            "topic": essay_prompt,
+                            "essay_text": essay_text,
+                            "result_text": result_text,
+                            "date_str": now_str
+                        }
                         
                         conn = sqlite3.connect("essay_database.db")
                         c = conn.cursor()
@@ -525,6 +516,35 @@ if user["role"] == "student":
                         conn.close()
                     else:
                         st.error(f"Hệ thống gặp sự cố khi chấm bài. Chi tiết: {last_err}")
+
+        # KHU VỰC HIỂN THỊ KẾT QUẢ VÀ NÚT TẢI FILE CỐ ĐỊNH
+        if st.session_state.last_graded_result:
+            res = st.session_state.last_graded_result
+            st.success("✅ ĐÃ CHẤM XONG BÀI THI!")
+            
+            # Nút tải file Word đặt nổi bật ở đầu
+            try:
+                docx_bytes = generate_docx_report(user['fullname'], res['date_str'], res['topic'], res['essay_text'], res['result_text'])
+                st.download_button(
+                    label="📥 BẤM VÀO ĐÂY ĐỂ TẢI PHIẾU NHẬN XÉT WORD (.DOCX) - CÓ CHỮ KÝ GIÁO VIÊN",
+                    data=docx_bytes,
+                    file_name=f"Phieu_Nhan_Xet_{user['username']}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    type="primary",
+                    use_container_width=True
+                )
+            except Exception as e:
+                st.warning(f"Chưa thể tạo file tải: {e}")
+                
+            st.markdown("---")
+            st.markdown(res['result_text'])
+            st.markdown("""
+            ---
+            ### ✍️ GIÁO VIÊN BỒI DƯỠNG & CHẤM ĐIỂM
+            **Cô Đỗ Thị Huyền**  
+            Trường THCS Thân Nhân Trung - TP. Bắc Ninh  
+            📞 Số điện thoại: 0982.036.952
+            """)
 
     with tab_history:
         st.markdown(f"### 📈 Hồ sơ theo dõi học tập của {user['fullname']}")
@@ -540,18 +560,19 @@ if user["role"] == "student":
             st.write(f"Tổng số bài đã luyện tập: **{len(rows)} bài**")
             for r in rows:
                 with st.expander(f"📝 Đề: {r[1][:70]}... - Ngày nộp: {r[2]}"):
-                    st.markdown(r[3])
                     try:
-                        pdf_data = generate_pdf_report(user['fullname'], r[2], r[1], r[4], r[3])
+                        docx_data = generate_docx_report(user['fullname'], r[2], r[1], r[4], r[3])
                         st.download_button(
-                            label=f"📥 Tải Phiếu PDF bài này (Mã #{r[0]})",
-                            data=pdf_data,
-                            file_name=f"Phieu_Nhan_Xet_{user['username']}_bai_{r[0]}.pdf",
-                            mime="application/pdf",
-                            key=f"dl_pdf_{r[0]}"
+                            label=f"📥 Tải Phiếu Nhận Xét Word (.docx) của bài này (Mã #{r[0]})",
+                            data=docx_data,
+                            file_name=f"Phieu_Nhan_Xet_{user['username']}_bai_{r[0]}.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            key=f"dl_docx_{r[0]}",
+                            use_container_width=True
                         )
                     except Exception:
                         pass
+                    st.markdown(r[3])
 
 # =========================================================================
 # GIAO DIỆN GIÁO VIÊN (DASHBOARD QUẢN TRỊ)
@@ -619,24 +640,26 @@ elif user["role"] == "teacher":
                     st.success(f"Đã xoá thành công bài nộp mã #{selected_sub[0]}!")
                     st.rerun()
             
+            # Nút tải file Word dành riêng cho Giáo viên
+            try:
+                t_docx = generate_docx_report(selected_sub[1], selected_sub[3], selected_sub[2], selected_sub[5], selected_sub[4])
+                st.download_button(
+                    label=f"📥 Tải Phiếu Nhận Xét Word (.docx) của học sinh {selected_sub[1]}",
+                    data=t_docx,
+                    file_name=f"Phieu_Nhan_Xet_{selected_sub[1]}_{selected_sub[0]}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    type="primary",
+                    use_container_width=True
+                )
+            except Exception:
+                pass
+                
             with st.expander("📄 Xem bài viết nguyên bản của học sinh"):
                 st.text(selected_sub[5])
                 
             st.markdown("---")
             st.markdown("### 📝 Kết quả chấm & Nhận xét của AI:")
             st.markdown(selected_sub[4])
-            
-            # Nút xuất PDF dành cho Giáo viên
-            try:
-                t_pdf = generate_pdf_report(selected_sub[1], selected_sub[3], selected_sub[2], selected_sub[5], selected_sub[4])
-                st.download_button(
-                    label=f"📥 Tải Phiếu Nhận Xét PDF của học sinh {selected_sub[1]}",
-                    data=t_pdf,
-                    file_name=f"Phieu_Nhan_Xet_{selected_sub[1]}_{selected_sub[0]}.pdf",
-                    mime="application/pdf"
-                )
-            except Exception:
-                pass
         else:
             st.info("Không có bài nộp nào để hiển thị.")
 
