@@ -246,7 +246,7 @@ if user["role"] == "student":
                             user_content.append(uploaded_image)
                             
                         response = client.models.generate_content(
-                            model='gemini-3.8-flash',
+                            model='gemini-2.5-pro',
                             contents=user_content,
                             config=types.GenerateContentConfig(
                                 system_instruction=SYSTEM_INSTRUCTION,
