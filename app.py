@@ -4,8 +4,12 @@ from datetime import datetime
 from google import genai
 from google.genai import types
 from PIL import Image
-import markdown
-from weasyprint import HTML
+import io
+import re
+from docx import Document
+from docx.shared import Inches, Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_TABLE_ALIGNMENT
 
 # 1. Cấu hình giao diện Web
 st.set_page_config(
