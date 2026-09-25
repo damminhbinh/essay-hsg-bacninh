@@ -2,4 +2,7 @@ streamlit
 google-genai
 pillow
 markdown
-weasyprint
+streamlit
+google-genai
+pillow
+python-docx
