@@ -45,31 +45,7 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md)
     font.name = 'Times New Roman'
     font.size = Pt(13)
     font.color.rgb = RGBColor(0x11, 0x11, 0x11)
-    
-    # Tiêu ngữ
-    head_table = doc.add_table(rows=1, cols=2)
-    head_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    head_table.autofit = False
-    
-    cell_left = head_table.cell(0, 0)
-    p_left = cell_left.paragraphs[0]
-    p_left.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r1 = p_left.add_run("TRƯỜNG THCS THÂN NHÂN TRUNG\n")
-    r1.bold = True
-    r1.font.size = Pt(12)
-    r2 = p_left.add_run("ĐỘI TUYỂN HSG TIẾNG ANH 9")
-    r2.font.size = Pt(11)
-    
-    cell_right = head_table.cell(0, 1)
-    p_right = cell_right.paragraphs[0]
-    p_right.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r3 = p_right.add_run("CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\n")
-    r3.bold = True
-    r3.font.size = Pt(12)
-    r4 = p_right.add_run("Độc lập - Tự do - Hạnh phúc")
-    r4.font.size = Pt(11)
-    r4.underline = True
-    
+      
     # Tiêu đề
     p_title = doc.add_paragraph()
     p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
