@@ -632,7 +632,7 @@ elif user["role"] == "teacher":
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
     
-    # TAB 1: TỔNG HỢP THEO ĐỀ BÀI (CHỈ HỌC SINH CỦA GIÁO VIÊN NÀY)
+   # TAB 1: TỔNG HỢP (HỖ TRỢ XEM TẤT CẢ BÀI HOẶC THEO ĐỀ)
     with t_tab1:
         st.markdown(f"### 📌 Báo cáo các bài nộp của học sinh do Thầy/Cô **{user['fullname']}** phụ trách")
         c.execute('''
@@ -646,29 +646,38 @@ elif user["role"] == "teacher":
         if not topic_rows:
             st.info("Học sinh trong danh sách của Thầy/Cô chưa nộp bài nào.")
         else:
-            topics_list = [t[0] for t in topic_rows]
+            topics_list = ["-- Tất cả các đề bài --"] + [t[0] for t in topic_rows]
             chosen_topic = st.selectbox("🎯 Chọn Đề bài muốn xem báo cáo:", topics_list, key="stat_topic_choice")
             
-            c.execute('''
-                SELECT s.id, u.fullname, s.created_at, s.identified_errors
-                FROM submissions s JOIN users u ON s.username = u.username
-                WHERE s.topic = ? AND u.teacher_username = ?
-                ORDER BY s.id DESC
-            ''', (chosen_topic, user["username"]))
+            if chosen_topic == "-- Tất cả các đề bài --":
+                c.execute('''
+                    SELECT s.id, u.fullname, s.created_at, s.identified_errors, s.topic
+                    FROM submissions s JOIN users u ON s.username = u.username
+                    WHERE u.teacher_username = ?
+                    ORDER BY s.id DESC
+                ''', (user["username"],))
+            else:
+                c.execute('''
+                    SELECT s.id, u.fullname, s.created_at, s.identified_errors, s.topic
+                    FROM submissions s JOIN users u ON s.username = u.username
+                    WHERE s.topic = ? AND u.teacher_username = ?
+                    ORDER BY s.id DESC
+                ''', (chosen_topic, user["username"]))
             subs_in_topic = c.fetchall()
             
-            st.write(f"Số học sinh của lớp đã nộp đề này: **{len(subs_in_topic)} bài**")
+            st.write(f"Số bài nộp: **{len(subs_in_topic)} bài**")
             table_data = []
             for sub in subs_in_topic:
                 table_data.append({
                     "Mã bài": sub[0],
                     "Học sinh": sub[1],
+                    "Đề bài": sub[4][:40] + "...",
                     "Thời gian nộp": sub[2],
                     "Lỗi trọng tâm cần sửa": sub[3]
                 })
             st.table(table_data)
             
-    # TAB 2: XEM BÀI VÀ XOÁ BÀI (CHỈ HỌC SINH CỦA GIÁO VIÊN NÀY)
+    # TAB 2: XEM BÀI VÀ XOÁ BÀI (HỖ TRỢ XEM TẤT CẢ HOẶC THEO TỪNG ĐỀ)
     with t_tab2:
         st.markdown("### 🔍 Thẩm định bài làm & Xoá bài nộp của lớp")
         c.execute('''
@@ -680,25 +689,42 @@ elif user["role"] == "teacher":
         all_topics = [t[0] for t in c.fetchall()]
         
         if all_topics:
-            selected_topic_filter = st.selectbox("📂 1. Chọn Đề bài:", all_topics, key="view_topic_filter")
+            # Bổ sung tùy chọn xem tất cả các đề
+            topic_options = ["-- Tất cả các đề bài --"] + all_topics
+            selected_topic_filter = st.selectbox("📂 1. Chọn Đề bài:", topic_options, key="view_topic_filter")
             
-            c.execute('''
-                SELECT s.id, u.fullname, s.created_at, s.feedback, s.essay_text
-                FROM submissions s JOIN users u ON s.username = u.username
-                WHERE s.topic = ? AND u.teacher_username = ?
-                ORDER BY s.id DESC
-            ''', (selected_topic_filter, user["username"]))
+            # Truy vấn: Nếu chọn "Tất cả" thì lấy hết bài, ngược lại thì lọc theo đề được chọn
+            if selected_topic_filter == "-- Tất cả các đề bài --":
+                c.execute('''
+                    SELECT s.id, u.fullname, s.created_at, s.feedback, s.essay_text, s.topic
+                    FROM submissions s JOIN users u ON s.username = u.username
+                    WHERE u.teacher_username = ?
+                    ORDER BY s.id DESC
+                ''', (user["username"],))
+            else:
+                c.execute('''
+                    SELECT s.id, u.fullname, s.created_at, s.feedback, s.essay_text, s.topic
+                    FROM submissions s JOIN users u ON s.username = u.username
+                    WHERE s.topic = ? AND u.teacher_username = ?
+                    ORDER BY s.id DESC
+                ''', (selected_topic_filter, user["username"]))
+                
             subs_of_topic = c.fetchall()
             
             if subs_of_topic:
-                sub_dict = {f"Mã #{s[0]} - Học sinh: {s[1]} (Nộp lúc: {s[2]})": s for s in subs_of_topic}
+                # Định dạng nhãn hiển thị: nếu xem tất cả thì hiện thêm tên đề vắn tắt
+                if selected_topic_filter == "-- Tất cả các đề bài --":
+                    sub_dict = {f"Mã #{s[0]} - Học sinh: {s[1]} - Đề: {s[5][:35]}... (Nộp lúc: {s[2]})": s for s in subs_of_topic}
+                else:
+                    sub_dict = {f"Mã #{s[0]} - Học sinh: {s[1]} (Nộp lúc: {s[2]})": s for s in subs_of_topic}
+                    
                 chosen_label = st.selectbox("👤 2. Chọn bài nộp của học sinh:", list(sub_dict.keys()))
                 selected_sub = sub_dict[chosen_label]
                 
                 col_info, col_del = st.columns([4, 1])
                 with col_info:
                     st.markdown(f"#### 👤 Học sinh: **{selected_sub[1]}** | Ngày nộp: **{selected_sub[2]}**")
-                    st.caption(f"Đề bài: {selected_topic_filter}")
+                    st.caption(f"Đề bài: {selected_sub[5]}")
                 with col_del:
                     st.write("")
                     if st.button("🗑️ Xoá bài này", type="secondary", use_container_width=True):
@@ -708,7 +734,7 @@ elif user["role"] == "teacher":
                         st.rerun()
                 
                 try:
-                    t_docx = generate_docx_report(selected_sub[1], selected_sub[2], selected_topic_filter, selected_sub[4], selected_sub[3], teacher_name=user['fullname'])
+                    t_docx = generate_docx_report(selected_sub[1], selected_sub[2], selected_sub[5], selected_sub[4], selected_sub[3], teacher_name=user['fullname'])
                     st.download_button(
                         label=f"📥 Tải Phiếu Nhận Xét Word (.docx) của học sinh {selected_sub[1]}",
                         data=t_docx,
@@ -727,7 +753,7 @@ elif user["role"] == "teacher":
                 st.markdown("### 📝 Kết quả chấm & Nhận xét của AI:")
                 st.markdown(selected_sub[3])
             else:
-                st.info("Chưa có học sinh nào nộp bài cho đề này.")
+                st.info("Chưa có học sinh nào nộp bài.")
         else:
             st.info("Hiện tại chưa có học sinh nào thuộc lớp của Thầy/Cô nộp bài.")
 
