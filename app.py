@@ -31,7 +31,7 @@ AUTHOR_INFO_MARKDOWN = """
 """
 
 # HÀM TẠO FILE DOCX CHUẨN THỂ THỨC (TIMES NEW ROMAN, CỠ 13PT, LỀ TRÁI 3CM, CÒN LẠI 2CM)
-def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md):
+def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md, teacher_name="Cô Đỗ Thị Huyền"):
     doc = Document()
     
     sections = doc.sections
@@ -168,18 +168,18 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md)
     r_role.bold = True
     r_role.font.size = Pt(13)
     
-    r_tname = p_s.add_run("Cô Đỗ Thị Huyền\n")
+    r_tname = p_s.add_run(f"{teacher_name}\n")
     r_tname.bold = True
     r_tname.font.size = Pt(13)
     
-    r_tsch = p_s.add_run("Trường THCS Thân Nhân Trung\n📞 0982.036.952")
+    r_tsch = p_s.add_run("Trường THCS Thân Nhân Trung\nTP. Bắc Ninh")
     r_tsch.font.size = Pt(12)
     
     bio = io.BytesIO()
     doc.save(bio)
     return bio.getvalue()
 
-# 2. Cơ sở dữ liệu SQLite
+# 2. Cơ sở dữ liệu SQLite (Nâng cấp hỗ trợ Đa giáo viên)
 def init_db():
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
@@ -188,9 +188,16 @@ def init_db():
             username TEXT PRIMARY KEY,
             password TEXT,
             fullname TEXT,
-            role TEXT
+            role TEXT,
+            teacher_username TEXT
         )
     ''')
+    # Tự động cập nhật thêm cột teacher_username nếu database cũ chưa có
+    try:
+        c.execute("ALTER TABLE users ADD COLUMN teacher_username TEXT")
+    except Exception:
+        pass
+
     c.execute('''
         CREATE TABLE IF NOT EXISTS submissions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -207,12 +214,26 @@ def init_db():
             created_at TEXT
         )
     ''')
+    
+    # Khởi tạo 2 tài khoản giáo viên mặc định nếu chưa có
     c.execute("SELECT * FROM users WHERE username = 'giaovien'")
     if not c.fetchone():
-        c.execute("INSERT INTO users VALUES ('giaovien', 'gv123456', 'Đỗ Thị Huyền', 'teacher')")
-        c.execute("INSERT INTO users VALUES ('hs01', '123456', 'Nguyễn Văn An', 'student')")
-        c.execute("INSERT INTO users VALUES ('hs02', '123456', 'Trần Thị Bình', 'student')")
-        c.execute("INSERT INTO users VALUES ('hs03', '123456', 'Lê Hoàng Long', 'student')")
+        c.execute("INSERT INTO users VALUES ('giaovien', 'gv123456', 'Đỗ Thị Huyền', 'teacher', NULL)")
+    
+    c.execute("SELECT * FROM users WHERE username = 'gv_binh'")
+    if not c.fetchone():
+        c.execute("INSERT INTO users VALUES ('gv_binh', 'gv123456', 'Đàm Thuận Minh Bình', 'teacher', NULL)")
+
+    # Gán giáo viên mặc định cho các học sinh mẫu
+    c.execute("SELECT * FROM users WHERE username = 'hs01'")
+    if not c.fetchone():
+        c.execute("INSERT INTO users VALUES ('hs01', '123456', 'Nguyễn Văn An', 'student', 'giaovien')")
+        c.execute("INSERT INTO users VALUES ('hs02', '123456', 'Trần Thị Bình', 'student', 'giaovien')")
+        c.execute("INSERT INTO users VALUES ('hs03', '123456', 'Lê Hoàng Long', 'student', 'giaovien')")
+    
+    # Cập nhật các học sinh cũ chưa có giáo viên quản lý về giaovien
+    c.execute("UPDATE users SET teacher_username = 'giaovien' WHERE role = 'student' AND (teacher_username IS NULL OR teacher_username = '')")
+    
     conn.commit()
     conn.close()
 
@@ -230,7 +251,7 @@ DE_THI_BAC_NINH = [
     "Chuyên Bắc Ninh 2024-2025: 'Using social platforms such as Youtube, Tiktok, Facebook and Twitter is the best way for youngsters to gain fame and wealth.' To what extent do you agree or disagree?"
 ]
 
-# 4. Huấn luyện System Instruction chuẩn Barem 2.0 Bắc Ninh & Triết lý Học thuật Thực chất
+# 4. Huấn luyện System Instruction chuẩn Barem 2.0 Bắc Ninh
 SYSTEM_INSTRUCTION = """
 You are an authoritative chief examiner for the English Gifted Student Examination (Kỳ thi Chọn Học sinh Giỏi Tỉnh & Chuyên Anh lớp 9) in Bac Ninh Province, Vietnam.
 
@@ -310,12 +331,17 @@ if "last_graded_result" not in st.session_state:
 def login(username, password):
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
-    c.execute("SELECT username, fullname, role FROM users WHERE username = ? AND password = ?", (username.strip(), password.strip()))
+    c.execute("SELECT username, fullname, role, teacher_username FROM users WHERE username = ? AND password = ?", (username.strip(), password.strip()))
     user_record = c.fetchone()
     conn.close()
     if user_record:
         st.session_state.logged_in = True
-        st.session_state.user = {"username": user_record[0], "fullname": user_record[1], "role": user_record[2]}
+        st.session_state.user = {
+            "username": user_record[0],
+            "fullname": user_record[1],
+            "role": user_record[2],
+            "teacher_username": user_record[3]
+        }
         st.rerun()
     else:
         st.error("Tên đăng nhập hoặc mật khẩu không chính xác!")
@@ -351,7 +377,7 @@ if not st.session_state.logged_in:
 # GIAO DIỆN ĐÃ ĐĂNG NHẬP
 user = st.session_state.user
 st.sidebar.markdown(f"### 👤 Xin chào: **{user['fullname']}**")
-st.sidebar.caption(f"Vai trò: {'Giáo viên quản trị' if user['role'] == 'teacher' else 'Học sinh đội tuyển'}")
+st.sidebar.caption(f"Vai trò: {'Giáo viên phụ trách' if user['role'] == 'teacher' else 'Học sinh đội tuyển'}")
 
 with st.sidebar.expander("🔑 Đổi mật khẩu"):
     with st.form("change_pw_form"):
@@ -396,6 +422,14 @@ if user["role"] == "student":
     st.title("📝 Nộp Bài & Theo Dõi Tiến Độ Cá Nhân")
     tab_submit, tab_history = st.tabs(["🚀 Nộp bài Essay mới", "📈 Hồ sơ & Lịch sử cá nhân"])
     
+    # Tìm tên Giáo viên phụ trách học sinh này
+    conn = sqlite3.connect("essay_database.db")
+    c = conn.cursor()
+    c.execute("SELECT fullname FROM users WHERE username = ?", (user.get("teacher_username", "giaovien"),))
+    t_row = c.fetchone()
+    my_teacher_name = t_row[0] if t_row else "Giáo viên phụ trách"
+    conn.close()
+
     with tab_submit:
         selected_topic = st.selectbox("📌 Chọn đề thi từ ngân hàng đề:", DE_THI_BAC_NINH)
         if selected_topic == "-- Tự nhập đề bài mới --":
@@ -451,7 +485,6 @@ if user["role"] == "student":
                     if essay_text.strip():
                         user_content.append(f"\nBÀI LÀM:\n{essay_text}")
                     
-                    # Xử lý toàn bộ ảnh và file PDF gửi sang Gemini API
                     if uploaded_files:
                         for uf in uploaded_files:
                             file_bytes = uf.getvalue()
@@ -502,13 +535,13 @@ if user["role"] == "student":
                     else:
                         st.error(f"Hệ thống gặp sự cố khi chấm bài. Chi tiết: {last_err}")
 
-        # KHU VỰC HIỂN THỊ KẾT QUẢ VÀ NÚT TẢI FILE WORD CỐ ĐỊNH
+        # HIỂN THỊ KẾT QUẢ VÀ NÚT TẢI FILE
         if st.session_state.last_graded_result:
             res = st.session_state.last_graded_result
             st.success("✅ ĐÃ CHẤM XONG BÀI THI!")
             
             try:
-                docx_bytes = generate_docx_report(user['fullname'], res['date_str'], res['topic'], res['essay_text'], res['result_text'])
+                docx_bytes = generate_docx_report(user['fullname'], res['date_str'], res['topic'], res['essay_text'], res['result_text'], teacher_name=my_teacher_name)
                 st.download_button(
                     label="📥 BẤM VÀO ĐÂY ĐỂ TẢI PHIẾU NHẬN XÉT WORD (.DOCX) - CÓ CHỮ KÝ GIÁO VIÊN",
                     data=docx_bytes,
@@ -522,12 +555,11 @@ if user["role"] == "student":
                 
             st.markdown("---")
             st.markdown(res['result_text'])
-            st.markdown("""
+            st.markdown(f"""
             ---
             ### ✍️ GIÁO VIÊN BỒI DƯỠNG & CHẤM ĐIỂM
-            **Cô Đỗ Thị Huyền**  
-            Trường THCS Thân Nhân Trung - TP. Bắc Ninh  
-            📞 Số điện thoại: 0982.036.952
+            **{my_teacher_name}**  
+            Trường THCS Thân Nhân Trung - TP. Bắc Ninh
             """)
 
     with tab_history:
@@ -545,7 +577,7 @@ if user["role"] == "student":
             for r in rows:
                 with st.expander(f"📝 Đề: {r[1][:70]}... - Ngày nộp: {r[2]}"):
                     try:
-                        docx_data = generate_docx_report(user['fullname'], r[2], r[1], r[4], r[3])
+                        docx_data = generate_docx_report(user['fullname'], r[2], r[1], r[4], r[3], teacher_name=my_teacher_name)
                         st.download_button(
                             label=f"📥 Tải Phiếu Nhận Xét Word (.docx) của bài này (Mã #{r[0]})",
                             data=docx_data,
@@ -559,23 +591,33 @@ if user["role"] == "student":
                     st.markdown(r[3])
 
 # =========================================================================
-# GIAO DIỆN GIÁO VIÊN (DASHBOARD QUẢN TRỊ - GOM BÀI THEO ĐỀ BÀI)
+# GIAO DIỆN GIÁO VIÊN (DASHBOARD RIÊNG CHO MỖI GIÁO VIÊN)
 # =========================================================================
 elif user["role"] == "teacher":
-    st.title("👨‍🏫 Bảng Điều Khiển Quản Trị Giáo Viên")
-    t_tab1, t_tab2, t_tab3 = st.tabs(["📊 Tổng hợp kết quả theo Đề thi", "🔍 Xem bài & Xoá bài nộp theo Đề", "👥 Quản lý & Cấp tài khoản"])
+    st.title(f"👨‍🏫 Bảng Quản Trị Lớp: Thầy/Cô {user['fullname']}")
+    t_tab1, t_tab2, t_tab3, t_tab4 = st.tabs([
+        "📊 Tổng hợp bài theo Đề thi", 
+        "🔍 Xem & Chữa bài của lớp", 
+        "👥 Quản lý học sinh của tôi",
+        "⚙️ Thêm tài khoản Giáo viên mới"
+    ])
     
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
     
-    # TAB 1: TỔNG HỢP CẢ LỚP (GOM THEO ĐỀ THI)
+    # TAB 1: TỔNG HỢP THEO ĐỀ BÀI (CHỈ HỌC SINH CỦA GIÁO VIÊN NÀY)
     with t_tab1:
-        st.markdown("### 📌 Báo cáo tiến độ gom theo từng Đề bài")
-        c.execute("SELECT DISTINCT topic FROM submissions ORDER BY id DESC")
+        st.markdown(f"### 📌 Báo cáo các bài nộp của học sinh do Thầy/Cô **{user['fullname']}** phụ trách")
+        c.execute('''
+            SELECT DISTINCT s.topic 
+            FROM submissions s JOIN users u ON s.username = u.username
+            WHERE u.teacher_username = ?
+            ORDER BY s.id DESC
+        ''', (user["username"],))
         topic_rows = c.fetchall()
         
         if not topic_rows:
-            st.info("Hiện tại chưa có bài nộp nào trong hệ thống.")
+            st.info("Học sinh trong danh sách của Thầy/Cô chưa nộp bài nào.")
         else:
             topics_list = [t[0] for t in topic_rows]
             chosen_topic = st.selectbox("🎯 Chọn Đề bài muốn xem báo cáo:", topics_list, key="stat_topic_choice")
@@ -583,12 +625,12 @@ elif user["role"] == "teacher":
             c.execute('''
                 SELECT s.id, u.fullname, s.created_at, s.identified_errors
                 FROM submissions s JOIN users u ON s.username = u.username
-                WHERE s.topic = ?
+                WHERE s.topic = ? AND u.teacher_username = ?
                 ORDER BY s.id DESC
-            ''', (chosen_topic,))
+            ''', (chosen_topic, user["username"]))
             subs_in_topic = c.fetchall()
             
-            st.write(f"Số học sinh đã nộp đề này: **{len(subs_in_topic)} bài**")
+            st.write(f"Số học sinh của lớp đã nộp đề này: **{len(subs_in_topic)} bài**")
             table_data = []
             for sub in subs_in_topic:
                 table_data.append({
@@ -599,35 +641,31 @@ elif user["role"] == "teacher":
                 })
             st.table(table_data)
             
-            st.markdown("---")
-            st.markdown("### 💡 Gợi ý Chữa bài chung trên lớp (AI Teacher Assistant):")
-            st.warning("""
-            **Các lỗi học sinh dễ mất điểm ở đề này:**
-            1. **Không đánh giá nhận định:** Đề đưa ra nhận định mạnh/tuyệt đối nhưng học sinh chỉ kể lể ưu/nhược điểm thông thường mà quên đánh giá tính xác đáng của nhận định.
-            2. **Sính từ vựng khủng nhưng ý nông:** Cố dùng từ khó, từ vựng C2 không tự nhiên trong khi 2 luận điểm chính chưa được phát triển chuỗi nguyên nhân - hệ quả (Why/How).
-            3. **Thiếu tính nhất quán:** Quan điểm ở Mở bài và Kết bài chưa liên kết chặt chẽ hoặc thiếu câu phản biện (Counterargument).
-            """)
-            
-    # TAB 2: XEM BÀI VÀ XOÁ BÀI (GOM THEO ĐỀ BÀI)
+    # TAB 2: XEM BÀI VÀ XOÁ BÀI (CHỈ HỌC SINH CỦA GIÁO VIÊN NÀY)
     with t_tab2:
-        st.markdown("### 🔍 Thẩm định bài làm & Xoá bài nộp (Phân loại theo Đề)")
-        c.execute("SELECT DISTINCT topic FROM submissions ORDER BY id DESC")
+        st.markdown("### 🔍 Thẩm định bài làm & Xoá bài nộp của lớp")
+        c.execute('''
+            SELECT DISTINCT s.topic 
+            FROM submissions s JOIN users u ON s.username = u.username
+            WHERE u.teacher_username = ?
+            ORDER BY s.id DESC
+        ''', (user["username"],))
         all_topics = [t[0] for t in c.fetchall()]
         
         if all_topics:
-            selected_topic_filter = st.selectbox("📂 1. Bước 1: Chọn Đề bài cần kiểm tra:", all_topics, key="view_topic_filter")
+            selected_topic_filter = st.selectbox("📂 1. Chọn Đề bài:", all_topics, key="view_topic_filter")
             
             c.execute('''
                 SELECT s.id, u.fullname, s.created_at, s.feedback, s.essay_text
                 FROM submissions s JOIN users u ON s.username = u.username
-                WHERE s.topic = ?
+                WHERE s.topic = ? AND u.teacher_username = ?
                 ORDER BY s.id DESC
-            ''', (selected_topic_filter,))
+            ''', (selected_topic_filter, user["username"]))
             subs_of_topic = c.fetchall()
             
             if subs_of_topic:
                 sub_dict = {f"Mã #{s[0]} - Học sinh: {s[1]} (Nộp lúc: {s[2]})": s for s in subs_of_topic}
-                chosen_label = st.selectbox("👤 2. Bước 2: Chọn bài nộp của học sinh:", list(sub_dict.keys()))
+                chosen_label = st.selectbox("👤 2. Chọn bài nộp của học sinh:", list(sub_dict.keys()))
                 selected_sub = sub_dict[chosen_label]
                 
                 col_info, col_del = st.columns([4, 1])
@@ -642,9 +680,8 @@ elif user["role"] == "teacher":
                         st.success(f"Đã xoá bài nộp mã #{selected_sub[0]}!")
                         st.rerun()
                 
-                # Nút tải Word
                 try:
-                    t_docx = generate_docx_report(selected_sub[1], selected_sub[2], selected_topic_filter, selected_sub[4], selected_sub[3])
+                    t_docx = generate_docx_report(selected_sub[1], selected_sub[2], selected_topic_filter, selected_sub[4], selected_sub[3], teacher_name=user['fullname'])
                     st.download_button(
                         label=f"📥 Tải Phiếu Nhận Xét Word (.docx) của học sinh {selected_sub[1]}",
                         data=t_docx,
@@ -665,14 +702,16 @@ elif user["role"] == "teacher":
             else:
                 st.info("Chưa có học sinh nào nộp bài cho đề này.")
         else:
-            st.info("Hệ thống chưa có bài nộp nào.")
+            st.info("Hiện tại chưa có học sinh nào thuộc lớp của Thầy/Cô nộp bài.")
 
-    # TAB 3: QUẢN LÝ VÀ CẤP TÀI KHOẢN HỌC SINH (HỖ TRỢ FILE EXCEL)
+    # TAB 3: QUẢN LÝ HỌC SINH RIÊNG CỦA GIÁO VIÊN NÀY
     with t_tab3:
-        st.markdown("### 📂 Cấp tài khoản hàng loạt từ file Excel")
-        st.caption("File Excel gồm 2 cột: Cột 1 là Mã học sinh (Username), Cột 2 là Họ và tên. Mật khẩu khởi tạo chung: 123456")
+        st.markdown(f"### 👥 Danh sách học sinh do Thầy/Cô **{user['fullname']}** trực tiếp quản lý")
         
-        uploaded_excel = st.file_uploader("Chọn file Excel danh sách học sinh (.xlsx, .xls):", type=["xlsx", "xls"])
+        st.markdown("#### 📂 1. Cấp tài khoản hàng loạt cho lớp từ file Excel")
+        st.caption("File Excel gồm 2 cột: Cột 1 là Mã học sinh, Cột 2 là Họ và tên. Tài khoản tạo ra sẽ tự động thuộc về lớp của Thầy/Cô.")
+        
+        uploaded_excel = st.file_uploader("Tải file Excel danh sách lớp (.xlsx, .xls):", type=["xlsx", "xls"])
         if uploaded_excel is not None:
             try:
                 import pandas as pd
@@ -684,7 +723,7 @@ elif user["role"] == "teacher":
                     preview_df.columns = ["Mã học sinh", "Họ và tên"]
                     st.dataframe(preview_df.head(10), use_container_width=True)
                     
-                    if st.button("🚀 Xác nhận tạo tài khoản cho danh sách trên", type="primary"):
+                    if st.button("🚀 Xác nhận tạo tài khoản vào danh sách lớp của tôi", type="primary"):
                         created_count = 0
                         skipped_count = 0
                         for _, row in preview_df.iterrows():
@@ -694,12 +733,12 @@ elif user["role"] == "teacher":
                             fullname = str(row["Họ và tên"]).strip()
                             if u_code and fullname and u_code != "nan" and fullname != "nan":
                                 try:
-                                    c.execute("INSERT INTO users VALUES (?, '123456', ?, 'student')", (u_code, fullname))
+                                    c.execute("INSERT INTO users VALUES (?, '123456', ?, 'student', ?)", (u_code, fullname, user["username"]))
                                     created_count += 1
                                 except sqlite3.IntegrityError:
                                     skipped_count += 1
                         conn.commit()
-                        st.success(f"🎉 Hoàn tất! Đã thêm thành công **{created_count}** học sinh mới (Bỏ qua {skipped_count} tài khoản bị trùng).")
+                        st.success(f"🎉 Hoàn tất! Đã thêm **{created_count}** học sinh vào lớp của Thầy/Cô (Bỏ qua {skipped_count} mã bị trùng).")
                         st.rerun()
             except Exception as ex:
                 st.error(f"Lỗi khi đọc file Excel: {str(ex)}")
@@ -708,18 +747,18 @@ elif user["role"] == "teacher":
         col_add, col_remove = st.columns(2)
         
         with col_add:
-            st.markdown("### ➕ Cấp thủ công 1 tài khoản")
+            st.markdown("#### ➕ 2. Thêm thủ công 1 học sinh vào lớp")
             with st.form("add_user_form"):
                 new_u = st.text_input("Tên đăng nhập (Username):", placeholder="Ví dụ: hs04")
                 new_p = st.text_input("Mật khẩu ban đầu:", value="123456")
                 new_name = st.text_input("Họ và tên học sinh:", placeholder="Ví dụ: Hoàng Minh Đức")
-                submit_btn = st.form_submit_button("Thêm học sinh này", type="primary")
+                submit_btn = st.form_submit_button("Thêm vào danh sách lớp", type="primary")
                 if submit_btn:
                     if new_u and new_p and new_name:
                         try:
-                            c.execute("INSERT INTO users VALUES (?, ?, ?, 'student')", (new_u.strip(), new_p.strip(), new_name.strip()))
+                            c.execute("INSERT INTO users VALUES (?, ?, ?, 'student', ?)", (new_u.strip(), new_p.strip(), new_name.strip(), user["username"]))
                             conn.commit()
-                            st.success(f"Đã tạo tài khoản cho **{new_name}**!")
+                            st.success(f"Đã thêm học sinh **{new_name}** vào lớp!")
                             st.rerun()
                         except Exception:
                             st.error("Tên đăng nhập này đã tồn tại!")
@@ -727,8 +766,8 @@ elif user["role"] == "teacher":
                         st.warning("Vui lòng nhập đầy đủ thông tin.")
                         
         with col_remove:
-            st.markdown("### ❌ Xoá tài khoản Học sinh")
-            c.execute("SELECT username, fullname FROM users WHERE role = 'student'")
+            st.markdown("#### ❌ 3. Xoá học sinh khỏi lớp")
+            c.execute("SELECT username, fullname FROM users WHERE role = 'student' AND teacher_username = ?", (user["username"],))
             students = c.fetchall()
             
             if students:
@@ -741,15 +780,46 @@ elif user["role"] == "teacher":
                     c.execute("DELETE FROM submissions WHERE username = ?", (student_user_to_delete,))
                     c.execute("DELETE FROM users WHERE username = ?", (student_user_to_delete,))
                     conn.commit()
-                    st.success(f"Đã xoá học sinh {target_student} và toàn bộ bài nộp liên quan!")
+                    st.success(f"Đã xoá học sinh {target_student} và toàn bộ bài làm!")
                     st.rerun()
             else:
-                st.info("Chưa có học sinh nào trong danh sách.")
+                st.info("Chưa có học sinh nào trong lớp của Thầy/Cô.")
 
         st.markdown("---")
-        st.markdown("#### 📋 Danh sách tài khoản hiện tại:")
-        c.execute("SELECT username as 'Tên đăng nhập', fullname as 'Họ và tên', role as 'Vai trò' FROM users")
-        current_users = c.fetchall()
-        st.table([{"Tên đăng nhập": u[0], "Họ và tên": u[1], "Vai trò": "Giáo viên" if u[2] == "teacher" else "Học sinh"} for u in current_users])
+        st.markdown(f"#### 📋 Danh sách học sinh hiện tại của lớp ({user['fullname']}):")
+        c.execute("SELECT username as 'Tên đăng nhập', fullname as 'Họ và tên' FROM users WHERE role = 'student' AND teacher_username = ?", (user["username"],))
+        current_students = c.fetchall()
+        if current_students:
+            st.table([{"Mã đăng nhập": s[0], "Họ và tên học sinh": s[1]} for s in current_students])
+        else:
+            st.caption("Chưa có học sinh nào.")
+
+    # TAB 4: CẤP THÊM TÀI KHOẢN GIÁO VIÊN MỚI
+    with t_tab4:
+        st.markdown("### 👨‍🏫 Cấp thêm tài khoản Giáo viên mới")
+        st.caption("Tài khoản giáo viên mới tạo sẽ có không gian quản lý lớp, danh sách học sinh và báo cáo bài nộp hoàn toàn độc lập.")
+        
+        with st.form("create_teacher_form"):
+            new_t_user = st.text_input("Tên đăng nhập Giáo viên:", placeholder="Ví dụ: gv_anh9a")
+            new_t_pass = st.text_input("Mật khẩu ban đầu:", value="gv123456")
+            new_t_name = st.text_input("Họ và tên Giáo viên:", placeholder="Ví dụ: Nguyễn Thị Lan")
+            btn_t = st.form_submit_button("Tạo tài khoản Giáo viên", type="primary")
+            if btn_t:
+                if new_t_user and new_t_pass and new_t_name:
+                    try:
+                        c.execute("INSERT INTO users VALUES (?, ?, ?, 'teacher', NULL)", (new_t_user.strip(), new_t_pass.strip(), new_t_name.strip()))
+                        conn.commit()
+                        st.success(f"🎉 Đã tạo thành công tài khoản cho Giáo viên: **{new_t_name}** (Username: `{new_t_user}`)!")
+                        st.rerun()
+                    except Exception:
+                        st.error("Tên đăng nhập này đã tồn tại, vui lòng chọn tên khác!")
+                else:
+                    st.warning("Vui lòng nhập đầy đủ thông tin.")
+                    
+        st.markdown("---")
+        st.markdown("#### 📋 Danh sách các Giáo viên hiện có trong hệ thống:")
+        c.execute("SELECT username, fullname FROM users WHERE role = 'teacher'")
+        all_t = c.fetchall()
+        st.table([{"Tên đăng nhập": t[0], "Họ và tên Giáo viên": t[1]} for t in all_t])
         
     conn.close()
