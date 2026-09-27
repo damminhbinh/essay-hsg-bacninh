@@ -6,6 +6,7 @@ from google.genai import types
 from PIL import Image
 import io
 import re
+import pandas as pd
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -33,7 +34,6 @@ AUTHOR_INFO_MARKDOWN = """
 # HÀM TẠO FILE DOCX CHUẨN THỂ THỨC (TIMES NEW ROMAN, CỠ 13PT, LỀ TRÁI 3CM, CÒN LẠI 2CM)
 def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md, teacher_name="Cô Đỗ Thị Huyền"):
     doc = Document()
-    
     sections = doc.sections
     for section in sections:
         section.top_margin = Inches(0.79)     # 2.0 cm
@@ -47,7 +47,6 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md,
     font.size = Pt(13)
     font.color.rgb = RGBColor(0x11, 0x11, 0x11)
     
-    # Tiêu đề chính
     p_title = doc.add_paragraph()
     p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p_title.paragraph_format.space_before = Pt(6)
@@ -57,7 +56,6 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md,
     r_t.font.size = Pt(16)
     r_t.font.color.rgb = RGBColor(0x0b, 0x3c, 0x5d)
     
-    # Thông tin bài nộp
     p_meta = doc.add_paragraph()
     p_meta.paragraph_format.line_spacing = 1.25
     p_meta.add_run("• Học sinh: ").bold = True
@@ -67,7 +65,6 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md,
     p_meta.add_run("• Đề thi: ").bold = True
     p_meta.add_run(f"{topic}\n")
     
-    # Bài làm
     h1 = doc.add_heading("I. NỘI DUNG BÀI LÀM CỦA HỌC SINH", level=2)
     for r in h1.runs:
         r.font.name = 'Times New Roman'
@@ -79,7 +76,6 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md,
     p_essay.paragraph_format.line_spacing = 1.25
     p_essay.add_run(essay_text if essay_text else "(Bài làm đính kèm dạng hình ảnh/PDF viết tay)")
     
-    # Nhận xét chi tiết
     h2 = doc.add_heading("II. ĐÁNH GIÁ CHI TIẾT & BÀI MẪU THAM KHẢO", level=2)
     for r in h2.runs:
         r.font.name = 'Times New Roman'
@@ -149,7 +145,6 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md,
                 run.font.name = 'Times New Roman'
                 run.font.size = Pt(13)
 
-    # Chữ ký Giáo viên căn phải
     p_sig = doc.add_paragraph()
     p_sig.paragraph_format.space_before = Pt(24)
     sig_table = doc.add_table(rows=1, cols=2)
@@ -179,7 +174,7 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md,
     doc.save(bio)
     return bio.getvalue()
 
-# 2. Cơ sở dữ liệu SQLite (Nâng cấp phân quyền Admin tối cao)
+# 2. Cơ sở dữ liệu SQLite (Nâng cấp hỗ trợ Mã đề & Bảng topics)
 def init_db():
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
@@ -198,6 +193,15 @@ def init_db():
         pass
 
     c.execute('''
+        CREATE TABLE IF NOT EXISTS topics (
+            topic_code TEXT PRIMARY KEY,
+            topic_content TEXT,
+            created_by TEXT,
+            created_at TEXT
+        )
+    ''')
+
+    c.execute('''
         CREATE TABLE IF NOT EXISTS submissions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT,
@@ -214,7 +218,7 @@ def init_db():
         )
     ''')
     
-    # Tài khoản quản trị tối cao (Chỉ tài khoản này mới được tạo thêm giáo viên khác)
+    # Khởi tạo giáo viên
     c.execute("SELECT * FROM users WHERE username = 'giaovien'")
     if not c.fetchone():
         c.execute("INSERT INTO users VALUES ('giaovien', 'gv123456', 'Đỗ Thị Huyền', 'teacher', NULL)")
@@ -223,35 +227,27 @@ def init_db():
     if not c.fetchone():
         c.execute("INSERT INTO users VALUES ('gv_binh', 'gv123456', 'Đàm Thuận Minh Bình', 'teacher', NULL)")
 
-    c.execute("SELECT * FROM users WHERE username = 'hs01'")
-    if not c.fetchone():
-        c.execute("INSERT INTO users VALUES ('hs01', '123456', 'Nguyễn Văn An', 'student', 'giaovien')")
-        c.execute("INSERT INTO users VALUES ('hs02', '123456', 'Trần Thị Bình', 'student', 'giaovien')")
-        c.execute("INSERT INTO users VALUES ('hs03', '123456', 'Lê Hoàng Long', 'student', 'giaovien')")
-    
-    c.execute("UPDATE users SET teacher_username = 'giaovien' WHERE role = 'student' AND (teacher_username IS NULL OR teacher_username = '')")
-    
+    # Khởi tạo một số mã đề mẫu nếu bảng topics rỗng
+    c.execute("SELECT COUNT(*) FROM topics")
+    if c.fetchone()[0] == 0:
+        sample_topics = [
+            ("HSG01", "Some people think that teenagers tend to be leading a less healthy life. To what extent do you agree or disagree? Write an essay of around 250 words.", "giaovien"),
+            ("HSG02", "'Tet holiday in Vietnam shouldn't be celebrated anymore.' To what extent do you agree or disagree with this statement? Write an essay of around 250 words.", "giaovien"),
+            ("OTC01", "'The advent of electronic devices has made our life much more stressful.' To what extent do you agree with this statement? Write an essay of around 250 words.", "gv_binh"),
+            ("OTC02", "'Using social platforms such as Youtube, Tiktok, Facebook and Twitter is the best way for youngsters to gain fame and wealth.' To what extent do you agree or disagree? Write an essay of around 250 words.", "gv_binh")
+        ]
+        now_init = datetime.now().strftime("%Y-%m-%d %H:%M")
+        for code, content, creator in sample_topics:
+            c.execute("INSERT INTO topics VALUES (?, ?, ?, ?)", (code, content, creator, now_init))
+
     conn.commit()
     conn.close()
 
 init_db()
 
-# Danh sách tài khoản có quyền Quản trị tối cao (Super Admin)
 SUPER_ADMIN_USERS = ["giaovien", "gv_binh"]
 
-# 3. Ngân hàng đề thi Bắc Ninh
-DE_THI_BAC_NINH = [
-    "-- Tự nhập đề bài mới --",
-    "HSG Tỉnh 2025-2026: Some people think that teenagers tend to be leading a less healthy life. To what extent do you agree or disagree?",
-    "HSG Tỉnh 2024-2025: 'Tet holiday in Vietnam shouldn't be celebrated anymore.' To what extent do you agree or disagree with this statement?",
-    "HSG Tỉnh 2023-2024: 'The advent of electronic devices has made our life much more stressful.' To what extent do you agree with this statement?",
-    "HSG Tỉnh 2022-2023: Many people claim that tourism has more negative effects than positive ones on the locals' life. Do you agree or disagree with this idea?",
-    "Chuyên Bắc Ninh 2026-2027: Some individuals believe that teenagers are suffering from more pressures than previous generations. To what extent do you agree or disagree with this statement?",
-    "Chuyên Bắc Ninh 2025-2026: 'Many people believe that ChatGPT and Artificial Intelligence (AI) tools make people think less.' To what extent do you agree or disagree?",
-    "Chuyên Bắc Ninh 2024-2025: 'Using social platforms such as Youtube, Tiktok, Facebook and Twitter is the best way for youngsters to gain fame and wealth.' To what extent do you agree or disagree?"
-]
-
-# 4. Huấn luyện System Instruction chuẩn Barem 2.0 Bắc Ninh & Thống kê từ vựng sau bài mẫu
+# 3. Huấn luyện System Instruction chuẩn Barem 2.0 Bắc Ninh
 SYSTEM_INSTRUCTION = """
 You are an authoritative chief examiner for the English Gifted Student Examination (Kỳ thi Chọn Học sinh Giỏi Tỉnh & Chuyên Anh lớp 9) in Bac Ninh Province, Vietnam.
 
@@ -337,6 +333,29 @@ REQUIRED OUTPUT FORMAT:
 (Ghi 1-3 lỗi cốt lõi ngắn gọn để ghi nhớ vào CSDL theo dõi cá nhân).
 """
 
+# Hàm phân tích điểm từ văn bản chấm
+def parse_scores_from_feedback(text):
+    s_content = 0.50
+    s_org = 0.40
+    s_lang = 0.40
+    s_mech = 0.10
+    s_total = 1.40
+    try:
+        m_c = re.search(r'\|\s*\*\*1\.\s*Content\*\*.*?\|\s*0\.70\s*\|\s*\*\*?([0-9.]+)\*\*?', text)
+        if m_c: s_content = float(m_c.group(1))
+        m_o = re.search(r'\|\s*\*\*2\.\s*Organization\*\*.*?\|\s*0\.60\s*\|\s*\*\*?([0-9.]+)\*\*?', text)
+        if m_o: s_org = float(m_o.group(1))
+        m_l = re.search(r'\|\s*\*\*3\.\s*Language\*\*.*?\|\s*0\.60\s*\|\s*\*\*?([0-9.]+)\*\*?', text)
+        if m_l: s_lang = float(m_l.group(1))
+        m_m = re.search(r'\|\s*\*\*4\.\s*Mechanics\*\*.*?\|\s*0\.10\s*\|\s*\*\*?([0-9.]+)\*\*?', text)
+        if m_m: s_mech = float(m_m.group(1))
+        m_t = re.search(r'\|\s*\*\*TỔNG ĐIỂM.*?\*\*\|\s*\*\*?2\.00\*\*?\|\s*\*\*?([0-9.]+)\s*/\s*2\.0', text)
+        if m_t: s_total = float(m_t.group(1))
+        else: s_total = round(s_content + s_org + s_lang + s_mech, 2)
+    except Exception:
+        pass
+    return s_content, s_org, s_lang, s_mech, s_total
+
 # Quản lý Đăng nhập qua Session State
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -385,7 +404,6 @@ if not st.session_state.logged_in:
                     login(username_input, password_input)
                 else:
                     st.warning("Vui lòng điền tên đăng nhập và mật khẩu!")
-        
         st.write("")
         st.info(AUTHOR_INFO_MARKDOWN)
     st.stop()
@@ -433,7 +451,7 @@ elif "GEMINI_API_KEY" in st.secrets:
     active_api_keys = [st.secrets["GEMINI_API_KEY"]] + active_api_keys
 
 # =========================================================================
-# GIAO DIỆN HỌC SINH
+# GIAO DIỆN HỌC SINH (CHỌN ĐỀ THEO MÃ ĐỀ ĐỊNH DANH)
 # =========================================================================
 if user["role"] == "student":
     st.title("📝 Nộp Bài & Theo Dõi Tiến Độ Cá Nhân")
@@ -444,14 +462,22 @@ if user["role"] == "student":
     c.execute("SELECT fullname FROM users WHERE username = ?", (user.get("teacher_username", "giaovien"),))
     t_row = c.fetchone()
     my_teacher_name = t_row[0] if t_row else "Giáo viên phụ trách"
+    
+    # Lấy danh sách đề bài từ CSDL
+    c.execute("SELECT topic_code, topic_content FROM topics ORDER BY topic_code ASC")
+    db_topics = c.fetchall()
     conn.close()
 
+    topic_dict = {f"[{t[0]}] {t[1][:80]}...": f"[{t[0]}] {t[1]}" for t in db_topics}
+    topic_options = list(topic_dict.keys()) + ["-- Tự nhập đề bài tự do --"]
+
     with tab_submit:
-        selected_topic = st.selectbox("📌 Chọn đề thi từ ngân hàng đề:", DE_THI_BAC_NINH)
-        if selected_topic == "-- Tự nhập đề bài mới --":
+        selected_display = st.selectbox("📌 Chọn Mã đề thi Giáo viên đã giao:", topic_options)
+        if selected_display == "-- Tự nhập đề bài tự do --":
             essay_prompt = st.text_area("Nhập đề bài luận:", placeholder="Nhập đề bài tại đây...")
         else:
-            essay_prompt = selected_topic
+            essay_prompt = topic_dict[selected_display]
+            st.info(f"**Nội dung đề bài chi tiết ({selected_display.split(']')[0]}]):**\n\n{essay_prompt}")
             
         sub_tab1, sub_tab2 = st.tabs(["📄 Dán văn bản", "📷 Tải ảnh bài viết / File PDF"])
         essay_text = ""
@@ -478,7 +504,7 @@ if user["role"] == "student":
                 
         if st.button("🚀 Nộp bài & Chấm điểm ngay", type="primary"):
             if not essay_prompt.strip():
-                st.error("⚠️ Vui lòng nhập hoặc chọn đề thi!")
+                st.error("⚠️ Vui lòng chọn hoặc nhập đề thi!")
             elif not essay_text.strip() and not uploaded_files:
                 st.error("⚠️ Vui lòng dán bài viết hoặc tải ảnh/PDF bài làm lên!")
             else:
@@ -540,12 +566,14 @@ if user["role"] == "student":
                             "date_str": now_str
                         }
                         
+                        s_c, s_o, s_l, s_m, s_tot = parse_scores_from_feedback(result_text)
+                        
                         conn = sqlite3.connect("essay_database.db")
                         c = conn.cursor()
                         c.execute('''
                             INSERT INTO submissions (username, topic, essay_text, score_total, score_content, score_org, score_lang, score_mech, feedback, identified_errors, created_at)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ''', (user["username"], essay_prompt, essay_text, 1.5, 0.5, 0.45, 0.45, 0.1, result_text, "Evaluating Statement, Vocabulary Check", now_str))
+                        ''', (user["username"], essay_prompt, essay_text, s_tot, s_c, s_o, s_l, s_m, result_text, "Evaluating Statement, Vocabulary Check", now_str))
                         conn.commit()
                         conn.close()
                     else:
@@ -607,34 +635,32 @@ if user["role"] == "student":
                     st.markdown(r[3])
 
 # =========================================================================
-# GIAO DIỆN GIÁO VIÊN (PHÂN QUYỀN CHẶT CHẼ THEO TỪNG GIÁO VIÊN)
+# GIAO DIỆN GIÁO VIÊN (QUẢN TRỊ ĐỀ THI, BẢNG ĐIỂM EXCEL & PHÂN QUYỀN)
 # =========================================================================
 elif user["role"] == "teacher":
     is_super_admin = user["username"] in SUPER_ADMIN_USERS
     
     st.title(f"👨‍🏫 Bảng Quản Trị Lớp: Thầy/Cô {user['fullname']}")
     
-    # Chỉ Admin trưởng mới có Tab 4 (Thêm tài khoản Giáo viên)
+    tab_list = [
+        "📊 Bảng điểm Excel & Tổng hợp", 
+        "🔍 Xem & Chữa bài chi tiết", 
+        "📌 Tạo & Quản lý Mã đề thi",
+        "👥 Quản lý học sinh của tôi"
+    ]
     if is_super_admin:
-        t_tab1, t_tab2, t_tab3, t_tab4 = st.tabs([
-            "📊 Tổng hợp bài theo Đề thi", 
-            "🔍 Xem & Chữa bài của lớp", 
-            "👥 Quản lý học sinh của tôi",
-            "⚙️ Cấp tài khoản Giáo viên mới"
-        ])
-    else:
-        t_tab1, t_tab2, t_tab3 = st.tabs([
-            "📊 Tổng hợp bài theo Đề thi", 
-            "🔍 Xem & Chữa bài của lớp", 
-            "👥 Quản lý học sinh của tôi"
-        ])
+        tab_list.append("⚙️ Cấp tài khoản Giáo viên mới")
+        
+    tabs = st.tabs(tab_list)
+    t_tab1, t_tab2, t_tab_topics, t_tab3 = tabs[0], tabs[1], tabs[2], tabs[3]
     
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
     
-   # TAB 1: TỔNG HỢP (HỖ TRỢ XEM TẤT CẢ BÀI HOẶC THEO ĐỀ)
+    # TAB 1: BẢNG ĐIỂM EXCEL & TỔNG HỢP THEO MÃ ĐỀ HOẶC TẤT CẢ
     with t_tab1:
-        st.markdown(f"### 📌 Báo cáo các bài nộp của học sinh do Thầy/Cô **{user['fullname']}** phụ trách")
+        st.markdown(f"### 📊 Báo cáo kết quả & Xuất Bảng điểm Excel của lớp")
+        
         c.execute('''
             SELECT DISTINCT s.topic 
             FROM submissions s JOIN users u ON s.username = u.username
@@ -647,37 +673,49 @@ elif user["role"] == "teacher":
             st.info("Học sinh trong danh sách của Thầy/Cô chưa nộp bài nào.")
         else:
             topics_list = ["-- Tất cả các đề bài --"] + [t[0] for t in topic_rows]
-            chosen_topic = st.selectbox("🎯 Chọn Đề bài muốn xem báo cáo:", topics_list, key="stat_topic_choice")
+            chosen_topic = st.selectbox("🎯 Chọn Đề bài để xem hoặc xuất bảng điểm:", topics_list, key="stat_topic_choice")
             
             if chosen_topic == "-- Tất cả các đề bài --":
                 c.execute('''
-                    SELECT s.id, u.fullname, s.created_at, s.identified_errors, s.topic
+                    SELECT s.id, u.fullname, s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
                     FROM submissions s JOIN users u ON s.username = u.username
                     WHERE u.teacher_username = ?
                     ORDER BY s.id DESC
                 ''', (user["username"],))
             else:
                 c.execute('''
-                    SELECT s.id, u.fullname, s.created_at, s.identified_errors, s.topic
+                    SELECT s.id, u.fullname, s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
                     FROM submissions s JOIN users u ON s.username = u.username
                     WHERE s.topic = ? AND u.teacher_username = ?
                     ORDER BY s.id DESC
                 ''', (chosen_topic, user["username"]))
-            subs_in_topic = c.fetchall()
+            subs = c.fetchall()
             
-            st.write(f"Số bài nộp: **{len(subs_in_topic)} bài**")
-            table_data = []
-            for sub in subs_in_topic:
-                table_data.append({
-                    "Mã bài": sub[0],
-                    "Học sinh": sub[1],
-                    "Đề bài": sub[4][:40] + "...",
-                    "Thời gian nộp": sub[2],
-                    "Lỗi trọng tâm cần sửa": sub[3]
-                })
-            st.table(table_data)
+            # Tạo DataFrame để hiển thị và xuất Excel
+            df_export = pd.DataFrame(subs, columns=[
+                "Mã bài", "Họ và tên học sinh", "Đề bài", 
+                "Content (0.7)", "Org (0.6)", "Lang (0.6)", "Mech (0.1)", 
+                "Tổng điểm (2.0)", "Lỗi trọng tâm cần sửa", "Thời gian nộp"
+            ])
             
-    # TAB 2: XEM BÀI VÀ XOÁ BÀI (HỖ TRỢ XEM TẤT CẢ HOẶC THEO TỪNG ĐỀ)
+            st.write(f"Số bài nộp: **{len(subs)} bài**")
+            st.dataframe(df_export, use_container_width=True)
+            
+            # Xuất file Excel (.xlsx)
+            buffer_excel = io.BytesIO()
+            with pd.ExcelWriter(buffer_excel, engine='openpyxl') as writer:
+                df_export.to_excel(writer, index=False, sheet_name="BangDiem_HSG")
+            
+            clean_topic_code = "All" if chosen_topic == "-- Tất cả các đề bài --" else (chosen_topic.split("]")[0].replace("[", "") if "]" in chosen_topic else "Topic")
+            st.download_button(
+                label="📥 Tải Bảng Điểm Excel (.xlsx) để lưu trữ",
+                data=buffer_excel.getvalue(),
+                file_name=f"Bang_Diem_HSG_{clean_topic_code}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary"
+            )
+            
+    # TAB 2: XEM BÀI VÀ XOÁ BÀI (HỖ TRỢ XEM TẤT CẢ HOẶC LỌC THEO ĐỀ)
     with t_tab2:
         st.markdown("### 🔍 Thẩm định bài làm & Xoá bài nộp của lớp")
         c.execute('''
@@ -689,11 +727,9 @@ elif user["role"] == "teacher":
         all_topics = [t[0] for t in c.fetchall()]
         
         if all_topics:
-            # Bổ sung tùy chọn xem tất cả các đề
             topic_options = ["-- Tất cả các đề bài --"] + all_topics
             selected_topic_filter = st.selectbox("📂 1. Chọn Đề bài:", topic_options, key="view_topic_filter")
             
-            # Truy vấn: Nếu chọn "Tất cả" thì lấy hết bài, ngược lại thì lọc theo đề được chọn
             if selected_topic_filter == "-- Tất cả các đề bài --":
                 c.execute('''
                     SELECT s.id, u.fullname, s.created_at, s.feedback, s.essay_text, s.topic
@@ -712,7 +748,6 @@ elif user["role"] == "teacher":
             subs_of_topic = c.fetchall()
             
             if subs_of_topic:
-                # Định dạng nhãn hiển thị: nếu xem tất cả thì hiện thêm tên đề vắn tắt
                 if selected_topic_filter == "-- Tất cả các đề bài --":
                     sub_dict = {f"Mã #{s[0]} - Học sinh: {s[1]} - Đề: {s[5][:35]}... (Nộp lúc: {s[2]})": s for s in subs_of_topic}
                 else:
@@ -757,7 +792,54 @@ elif user["role"] == "teacher":
         else:
             st.info("Hiện tại chưa có học sinh nào thuộc lớp của Thầy/Cô nộp bài.")
 
-    # TAB 3: QUẢN LÝ HỌC SINH RIÊNG CỦA GIÁO VIÊN NÀY
+    # TAB 3: TẠO VÀ QUẢN LÝ MÃ ĐỀ THI
+    with t_tab_topics:
+        st.markdown("### 📌 Tạo Đề thi mới & Gán Mã đề (VD: HSG01, OTC01)")
+        st.caption("Mã đề tạo tại đây sẽ hiển thị trong danh mục lựa chọn đề bài của học sinh để các em nộp bài chính xác theo yêu cầu.")
+        
+        with st.form("create_topic_form"):
+            t_code = st.text_input("Mã đề (viết liền, không dấu - ví dụ: HSG03, OTC02, CHUYEN01):", placeholder="HSG03").strip().upper()
+            t_content = st.text_area("Nội dung câu hỏi đề thi (kèm yêu cầu độ dài):", placeholder="Ví dụ: 'Some people think that... Write an essay of around 250 words...'")
+            btn_create_topic = st.form_submit_button("Lưu & Ban hành Mã đề này", type="primary")
+            if btn_create_topic:
+                if t_code and t_content:
+                    try:
+                        now_t = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        c.execute("INSERT INTO topics VALUES (?, ?, ?, ?)", (t_code, t_content.strip(), user["username"], now_t))
+                        conn.commit()
+                        st.success(f"🎉 Đã lưu thành công Mã đề: **[{t_code}]**!")
+                        st.rerun()
+                    except sqlite3.IntegrityError:
+                        st.error(f"Mã đề '{t_code}' đã tồn tại! Vui lòng đặt mã khác.")
+                else:
+                    st.warning("Vui lòng điền đủ Mã đề và Nội dung đề thi!")
+                    
+        st.markdown("---")
+        st.markdown("#### 📋 Danh sách các Mã đề hiện có trong hệ thống:")
+        c.execute("SELECT topic_code, topic_content, created_by, created_at FROM topics ORDER BY topic_code ASC")
+        current_topics = c.fetchall()
+        if current_topics:
+            t_table = []
+            for t in current_topics:
+                t_table.append({
+                    "Mã đề": t[0],
+                    "Nội dung đề thi": t[1][:70] + "...",
+                    "Người tạo": t[2],
+                    "Ngày tạo": t[3]
+                })
+            st.table(t_table)
+            
+            # Cho phép xoá mã đề
+            del_t_code = st.selectbox("Chọn mã đề muốn xoá khỏi danh mục:", [t[0] for t in current_topics], key="del_topic_sel")
+            if st.button("🗑️ Xoá mã đề này", type="secondary"):
+                c.execute("DELETE FROM topics WHERE topic_code = ?", (del_t_code,))
+                conn.commit()
+                st.success(f"Đã xoá mã đề {del_t_code}!")
+                st.rerun()
+        else:
+            st.info("Chưa có đề thi nào trong ngân hàng đề.")
+
+    # TAB 4: QUẢN LÝ HỌC SINH RIÊNG CỦA GIÁO VIÊN NÀY
     with t_tab3:
         st.markdown(f"### 👥 Danh sách học sinh do Thầy/Cô **{user['fullname']}** trực tiếp quản lý")
         
@@ -767,7 +849,6 @@ elif user["role"] == "teacher":
         uploaded_excel = st.file_uploader("Tải file Excel danh sách lớp (.xlsx, .xls):", type=["xlsx", "xls"])
         if uploaded_excel is not None:
             try:
-                import pandas as pd
                 df = pd.read_excel(uploaded_excel)
                 if df.shape[1] < 2:
                     st.error("File Excel cần có ít nhất 2 cột: Cột 1 là Mã HS và Cột 2 là Họ tên.")
@@ -847,11 +928,11 @@ elif user["role"] == "teacher":
         else:
             st.caption("Chưa có học sinh nào.")
 
-    # TAB 4: CẤP THÊM TÀI KHOẢN GIÁO VIÊN MỚI (CHỈ HIỂN THỊ VỚI TÀI KHOẢN QUẢN TRỊ TRƯỞNG)
-    if is_super_admin:
-        with t_tab4:
+    # TAB 5: CẤP THÊM TÀI KHOẢN GIÁO VIÊN MỚI (CHỈ SUPER ADMIN)
+    if is_super_admin and len(tabs) > 4:
+        with tabs[4]:
             st.markdown("### 👑 Khu vực Quản trị Trưởng: Cấp thêm tài khoản Giáo viên")
-            st.info("💡 **Lưu ý:** Chỉ có tài khoản Quản trị trưởng mới có quyền truy cập vào mục này. Các giáo viên được tạo ra sẽ chỉ quản lý lớp học sinh của riêng họ và không thể tạo thêm tài khoản giáo viên khác.")
+            st.info("💡 **Lưu ý:** Chỉ tài khoản Quản trị trưởng mới có quyền truy cập tab này.")
             
             with st.form("create_teacher_form"):
                 new_t_user = st.text_input("Tên đăng nhập Giáo viên:", placeholder="Ví dụ: gv_lan")
