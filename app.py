@@ -175,20 +175,17 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md,
     return bio.getvalue()
 
 # 2. Cơ sở dữ liệu SQLite (Nâng cấp hỗ trợ Mã đề & Bảng topics)
-def init_db():
-    conn = sqlite3.connect("essay_database.db")
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            username TEXT PRIMARY KEY,
-            password TEXT,
-            fullname TEXT,
-            role TEXT,
-            teacher_username TEXT
-        )
-    ''')
+# Tự động cập nhật lại điểm thực tế cho các bài cũ bị dính điểm mẫu 1.5
     try:
-        c.execute("ALTER TABLE users ADD COLUMN teacher_username TEXT")
+        c.execute("SELECT id, feedback FROM submissions WHERE score_total = 1.5 AND score_content = 0.5 AND score_org = 0.45")
+        dummy_subs = c.fetchall()
+        for sub_id, fb_text in dummy_subs:
+            sc, so, sl, sm, stot, err_note = parse_scores_from_feedback(fb_text)
+            c.execute('''
+                UPDATE submissions 
+                SET score_content = ?, score_org = ?, score_lang = ?, score_mech = ?, score_total = ?, identified_errors = ?
+                WHERE id = ?
+            ''', (sc, so, sl, sm, stot, err_note, sub_id))
     except Exception:
         pass
 
@@ -334,27 +331,53 @@ REQUIRED OUTPUT FORMAT:
 """
 
 # Hàm phân tích điểm từ văn bản chấm
+# HÀM BÓC TÁCH ĐIỂM THỰC TẾ VÀ LỖI THỰC TẾ TỪ PHẢN HỒI CỦA GIÁM KHẢO AI
 def parse_scores_from_feedback(text):
-    s_content = 0.50
+    s_content = 0.45
     s_org = 0.40
     s_lang = 0.40
-    s_mech = 0.10
-    s_total = 1.40
+    s_mech = 0.08
+    s_total = 1.33
+    errors_str = "Chưa ghi nhận lỗi nghiêm trọng"
+    
     try:
-        m_c = re.search(r'\|\s*\*\*1\.\s*Content\*\*.*?\|\s*0\.70\s*\|\s*\*\*?([0-9.]+)\*\*?', text)
+        # Bắt điểm Content
+        m_c = re.search(r'Content.*?(?:0\.70|0\.7)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
         if m_c: s_content = float(m_c.group(1))
-        m_o = re.search(r'\|\s*\*\*2\.\s*Organization\*\*.*?\|\s*0\.60\s*\|\s*\*\*?([0-9.]+)\*\*?', text)
+        
+        # Bắt điểm Organization
+        m_o = re.search(r'Organization.*?(?:0\.60|0\.6)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
         if m_o: s_org = float(m_o.group(1))
-        m_l = re.search(r'\|\s*\*\*3\.\s*Language\*\*.*?\|\s*0\.60\s*\|\s*\*\*?([0-9.]+)\*\*?', text)
+        
+        # Bắt điểm Language
+        m_l = re.search(r'Language.*?(?:0\.60|0\.6)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
         if m_l: s_lang = float(m_l.group(1))
-        m_m = re.search(r'\|\s*\*\*4\.\s*Mechanics\*\*.*?\|\s*0\.10\s*\|\s*\*\*?([0-9.]+)\*\*?', text)
+        
+        # Bắt điểm Mechanics
+        m_m = re.search(r'Mechanics.*?(?:0\.10|0\.1)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
         if m_m: s_mech = float(m_m.group(1))
-        m_t = re.search(r'\|\s*\*\*TỔNG ĐIỂM.*?\*\*\|\s*\*\*?2\.00\*\*?\|\s*\*\*?([0-9.]+)\s*/\s*2\.0', text)
-        if m_t: s_total = float(m_t.group(1))
-        else: s_total = round(s_content + s_org + s_lang + s_mech, 2)
+        
+        # Bắt Tổng điểm
+        m_t = re.search(r'(?:TỔNG ĐIỂM|Total Score).*?(?:2\.00|2\.0)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
+        if m_t:
+            s_total = float(m_t.group(1))
+        else:
+            s_total = round(s_content + s_org + s_lang + s_mech, 2)
+            
+        # Bắt danh sách lỗi then chốt ở Mục 6
+        m_err = re.search(r'(?:6\.\s*⚠️\s*DANH SÁCH LỖI THEN CHỐT CẦN LƯU HỒ SƠ|DANH SÁCH LỖI THEN CHỐT)[:\s*\n]+(.*?)(?:\n###|\Z)', text, re.DOTALL | re.IGNORECASE)
+        if m_err:
+            raw_err = m_err.group(1).strip()
+            # Lọc bỏ dấu gạch đầu dòng, dấu nháy, ngoặc đơn
+            cleaned_lines = [re.sub(r'^[\s*\-0-9.)]+', '', line).strip() for line in raw_err.split('\n') if line.strip()]
+            if cleaned_lines:
+                errors_str = " | ".join(cleaned_lines[:3])
+                if len(errors_str) > 120:
+                    errors_str = errors_str[:117] + "..."
     except Exception:
         pass
-    return s_content, s_org, s_lang, s_mech, s_total
+        
+    return s_content, s_org, s_lang, s_mech, s_total, errors_str
 
 # Quản lý Đăng nhập qua Session State
 if "logged_in" not in st.session_state:
@@ -566,14 +589,14 @@ if user["role"] == "student":
                             "date_str": now_str
                         }
                         
-                        s_c, s_o, s_l, s_m, s_tot = parse_scores_from_feedback(result_text)
-                        
+                        s_c, s_o, s_l, s_m, s_tot, s_err = parse_scores_from_feedback(result_text)
+
                         conn = sqlite3.connect("essay_database.db")
                         c = conn.cursor()
                         c.execute('''
                             INSERT INTO submissions (username, topic, essay_text, score_total, score_content, score_org, score_lang, score_mech, feedback, identified_errors, created_at)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ''', (user["username"], essay_prompt, essay_text, s_tot, s_c, s_o, s_l, s_m, result_text, "Evaluating Statement, Vocabulary Check", now_str))
+                        ''', (user["username"], essay_prompt, essay_text, s_tot, s_c, s_o, s_l, s_m, result_text, s_err, now_str))
                         conn.commit()
                         conn.close()
                     else:
