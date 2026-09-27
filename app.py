@@ -31,6 +31,60 @@ AUTHOR_INFO_MARKDOWN = """
 🏫 *Trường THCS Thân Nhân Trung - TP. Bắc Ninh*
 """
 
+# HÀM BÓC TÁCH ĐIỂM THỰC TẾ VÀ LỖI THỰC TẾ TỪ PHẢN HỒI CỦA GIÁM KHẢO AI
+def parse_scores_from_feedback(text):
+    s_content = 0.45
+    s_org = 0.40
+    s_lang = 0.40
+    s_mech = 0.08
+    s_total = 1.33
+    errors_str = "Chưa ghi nhận lỗi nghiêm trọng"
+    
+    if not text:
+        return s_content, s_org, s_lang, s_mech, s_total, errors_str
+        
+    try:
+        # Bắt điểm Content
+        m_c = re.search(r'Content.*?(?:0\.70|0\.7)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
+        if m_c:
+            s_content = float(m_c.group(1))
+        
+        # Bắt điểm Organization
+        m_o = re.search(r'Organization.*?(?:0\.60|0\.6)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
+        if m_o:
+            s_org = float(m_o.group(1))
+        
+        # Bắt điểm Language
+        m_l = re.search(r'Language.*?(?:0\.60|0\.6)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
+        if m_l:
+            s_lang = float(m_l.group(1))
+        
+        # Bắt điểm Mechanics
+        m_m = re.search(r'Mechanics.*?(?:0\.10|0\.1)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
+        if m_m:
+            s_mech = float(m_m.group(1))
+        
+        # Bắt Tổng điểm
+        m_t = re.search(r'(?:TỔNG ĐIỂM|Total Score).*?(?:2\.00|2\.0)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
+        if m_t:
+            s_total = float(m_t.group(1))
+        else:
+            s_total = round(s_content + s_org + s_lang + s_mech, 2)
+            
+        # Bắt danh sách lỗi then chốt ở Mục 6
+        m_err = re.search(r'(?:6\.\s*⚠️\s*DANH SÁCH LỖI THEN CHỐT CẦN LƯU HỒ SƠ|DANH SÁCH LỖI THEN CHỐT)[:\s*\n]+(.*?)(?:\n###|\Z)', text, re.DOTALL | re.IGNORECASE)
+        if m_err:
+            raw_err = m_err.group(1).strip()
+            cleaned_lines = [re.sub(r'^[\s*\-0-9.)]+', '', line).strip() for line in raw_err.split('\n') if line.strip()]
+            if cleaned_lines:
+                errors_str = " | ".join(cleaned_lines[:3])
+                if len(errors_str) > 120:
+                    errors_str = errors_str[:117] + "..."
+    except Exception:
+        pass
+        
+    return s_content, s_org, s_lang, s_mech, s_total, errors_str
+
 # HÀM TẠO FILE DOCX CHUẨN THỂ THỨC (TIMES NEW ROMAN, CỠ 13PT, LỀ TRÁI 3CM, CÒN LẠI 2CM)
 def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md, teacher_name="Cô Đỗ Thị Huyền"):
     doc = Document()
@@ -174,18 +228,21 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md,
     doc.save(bio)
     return bio.getvalue()
 
-# 2. Cơ sở dữ liệu SQLite (Nâng cấp hỗ trợ Mã đề & Bảng topics)
-# Tự động cập nhật lại điểm thực tế cho các bài cũ bị dính điểm mẫu 1.5
+# 2. Cơ sở dữ liệu SQLite
+def init_db():
+    conn = sqlite3.connect("essay_database.db")
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            password TEXT,
+            fullname TEXT,
+            role TEXT,
+            teacher_username TEXT
+        )
+    ''')
     try:
-        c.execute("SELECT id, feedback FROM submissions WHERE score_total = 1.5 AND score_content = 0.5 AND score_org = 0.45")
-        dummy_subs = c.fetchall()
-        for sub_id, fb_text in dummy_subs:
-            sc, so, sl, sm, stot, err_note = parse_scores_from_feedback(fb_text)
-            c.execute('''
-                UPDATE submissions 
-                SET score_content = ?, score_org = ?, score_lang = ?, score_mech = ?, score_total = ?, identified_errors = ?
-                WHERE id = ?
-            ''', (sc, so, sl, sm, stot, err_note, sub_id))
+        c.execute("ALTER TABLE users ADD COLUMN teacher_username TEXT")
     except Exception:
         pass
 
@@ -224,7 +281,7 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md,
     if not c.fetchone():
         c.execute("INSERT INTO users VALUES ('gv_binh', 'gv123456', 'Đàm Thuận Minh Bình', 'teacher', NULL)")
 
-    # Khởi tạo một số mã đề mẫu nếu bảng topics rỗng
+    # Khởi tạo các mã đề mẫu nếu bảng topics rỗng
     c.execute("SELECT COUNT(*) FROM topics")
     if c.fetchone()[0] == 0:
         sample_topics = [
@@ -236,6 +293,20 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md,
         now_init = datetime.now().strftime("%Y-%m-%d %H:%M")
         for code, content, creator in sample_topics:
             c.execute("INSERT INTO topics VALUES (?, ?, ?, ?)", (code, content, creator, now_init))
+
+    # TỰ ĐỘNG QUÉT VÀ SỬA ĐIỂM THỰC TẾ CHO TẤT CẢ CÁC BÀI ĐÃ NỘP TRƯỚC ĐÂY
+    try:
+        c.execute("SELECT id, feedback FROM submissions")
+        all_subs = c.fetchall()
+        for sub_id, fb_text in all_subs:
+            sc, so, sl, sm, stot, err_note = parse_scores_from_feedback(fb_text)
+            c.execute('''
+                UPDATE submissions 
+                SET score_content = ?, score_org = ?, score_lang = ?, score_mech = ?, score_total = ?, identified_errors = ?
+                WHERE id = ?
+            ''', (sc, so, sl, sm, stot, err_note, sub_id))
+    except Exception:
+        pass
 
     conn.commit()
     conn.close()
@@ -330,56 +401,7 @@ REQUIRED OUTPUT FORMAT:
 (Ghi 1-3 lỗi cốt lõi ngắn gọn để ghi nhớ vào CSDL theo dõi cá nhân).
 """
 
-# Hàm phân tích điểm từ văn bản chấm
-# HÀM BÓC TÁCH ĐIỂM THỰC TẾ VÀ LỖI THỰC TẾ TỪ PHẢN HỒI CỦA GIÁM KHẢO AI
-def parse_scores_from_feedback(text):
-    s_content = 0.45
-    s_org = 0.40
-    s_lang = 0.40
-    s_mech = 0.08
-    s_total = 1.33
-    errors_str = "Chưa ghi nhận lỗi nghiêm trọng"
-    
-    try:
-        # Bắt điểm Content
-        m_c = re.search(r'Content.*?(?:0\.70|0\.7)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
-        if m_c: s_content = float(m_c.group(1))
-        
-        # Bắt điểm Organization
-        m_o = re.search(r'Organization.*?(?:0\.60|0\.6)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
-        if m_o: s_org = float(m_o.group(1))
-        
-        # Bắt điểm Language
-        m_l = re.search(r'Language.*?(?:0\.60|0\.6)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
-        if m_l: s_lang = float(m_l.group(1))
-        
-        # Bắt điểm Mechanics
-        m_m = re.search(r'Mechanics.*?(?:0\.10|0\.1)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
-        if m_m: s_mech = float(m_m.group(1))
-        
-        # Bắt Tổng điểm
-        m_t = re.search(r'(?:TỔNG ĐIỂM|Total Score).*?(?:2\.00|2\.0)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
-        if m_t:
-            s_total = float(m_t.group(1))
-        else:
-            s_total = round(s_content + s_org + s_lang + s_mech, 2)
-            
-        # Bắt danh sách lỗi then chốt ở Mục 6
-        m_err = re.search(r'(?:6\.\s*⚠️\s*DANH SÁCH LỖI THEN CHỐT CẦN LƯU HỒ SƠ|DANH SÁCH LỖI THEN CHỐT)[:\s*\n]+(.*?)(?:\n###|\Z)', text, re.DOTALL | re.IGNORECASE)
-        if m_err:
-            raw_err = m_err.group(1).strip()
-            # Lọc bỏ dấu gạch đầu dòng, dấu nháy, ngoặc đơn
-            cleaned_lines = [re.sub(r'^[\s*\-0-9.)]+', '', line).strip() for line in raw_err.split('\n') if line.strip()]
-            if cleaned_lines:
-                errors_str = " | ".join(cleaned_lines[:3])
-                if len(errors_str) > 120:
-                    errors_str = errors_str[:117] + "..."
-    except Exception:
-        pass
-        
-    return s_content, s_org, s_lang, s_mech, s_total, errors_str
-
-# Quản lý Đăng nhập qua Session State
+# Quản lý Đăng nhập
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user = None
@@ -486,7 +508,6 @@ if user["role"] == "student":
     t_row = c.fetchone()
     my_teacher_name = t_row[0] if t_row else "Giáo viên phụ trách"
     
-    # Lấy danh sách đề bài từ CSDL
     c.execute("SELECT topic_code, topic_content FROM topics ORDER BY topic_code ASC")
     db_topics = c.fetchall()
     conn.close()
@@ -589,8 +610,9 @@ if user["role"] == "student":
                             "date_str": now_str
                         }
                         
+                        # Trích xuất điểm thực tế và lỗi thực tế từ kết quả chấm
                         s_c, s_o, s_l, s_m, s_tot, s_err = parse_scores_from_feedback(result_text)
-
+                        
                         conn = sqlite3.connect("essay_database.db")
                         c = conn.cursor()
                         c.execute('''
@@ -724,7 +746,6 @@ elif user["role"] == "teacher":
             st.write(f"Số bài nộp: **{len(subs)} bài**")
             st.dataframe(df_export, use_container_width=True)
             
-            # Xuất file Excel (.xlsx)
             buffer_excel = io.BytesIO()
             with pd.ExcelWriter(buffer_excel, engine='openpyxl') as writer:
                 df_export.to_excel(writer, index=False, sheet_name="BangDiem_HSG")
@@ -738,7 +759,7 @@ elif user["role"] == "teacher":
                 type="primary"
             )
             
-    # TAB 2: XEM BÀI VÀ XOÁ BÀI (HỖ TRỢ XEM TẤT CẢ HOẶC LỌC THEO ĐỀ)
+    # TAB 2: XEM BÀI VÀ XOÁ BÀI
     with t_tab2:
         st.markdown("### 🔍 Thẩm định bài làm & Xoá bài nộp của lớp")
         c.execute('''
@@ -852,7 +873,6 @@ elif user["role"] == "teacher":
                 })
             st.table(t_table)
             
-            # Cho phép xoá mã đề
             del_t_code = st.selectbox("Chọn mã đề muốn xoá khỏi danh mục:", [t[0] for t in current_topics], key="del_topic_sel")
             if st.button("🗑️ Xoá mã đề này", type="secondary"):
                 c.execute("DELETE FROM topics WHERE topic_code = ?", (del_t_code,))
