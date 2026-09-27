@@ -77,7 +77,7 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md)
     p_essay = doc.add_paragraph()
     p_essay.paragraph_format.left_indent = Inches(0.2)
     p_essay.paragraph_format.line_spacing = 1.25
-    p_essay.add_run(essay_text if essay_text else "(Bài nộp qua hình ảnh viết tay)")
+    p_essay.add_run(essay_text if essay_text else "(Bài làm đính kèm dạng hình ảnh/PDF viết tay)")
     
     # Nhận xét chi tiết
     h2 = doc.add_heading("II. ĐÁNH GIÁ CHI TIẾT & BÀI MẪU THAM KHẢO", level=2)
@@ -218,7 +218,7 @@ def init_db():
 
 init_db()
 
-# 3. Ngân hàng đề thi
+# 3. Ngân hàng đề thi Bắc Ninh
 DE_THI_BAC_NINH = [
     "-- Tự nhập đề bài mới --",
     "HSG Tỉnh 2025-2026: Some people think that teenagers tend to be leading a less healthy life. To what extent do you agree or disagree?",
@@ -230,97 +230,74 @@ DE_THI_BAC_NINH = [
     "Chuyên Bắc Ninh 2024-2025: 'Using social platforms such as Youtube, Tiktok, Facebook and Twitter is the best way for youngsters to gain fame and wealth.' To what extent do you agree or disagree?"
 ]
 
-# 4. Huấn luyện System Instruction chuẩn Barem 2.0 Bắc Ninh (Chuẩn 250 từ)
+# 4. Huấn luyện System Instruction chuẩn Barem 2.0 Bắc Ninh & Triết lý Học thuật Thực chất
 SYSTEM_INSTRUCTION = """
 You are an authoritative chief examiner for the English Gifted Student Examination (Kỳ thi Chọn Học sinh Giỏi Tỉnh & Chuyên Anh lớp 9) in Bac Ninh Province, Vietnam.
 
-Your mission is to enforce academic rigor and discipline:
-- Accurately categorize ANY academic essay prompt (Opinion, Discussion, Cause-Effect-Solution, Advantages-Disadvantages, Two-part question).
-- Evaluate according to the standard academic criteria of that specific essay type.
-- Enforce the official Bac Ninh 2.0-point rubric with strict penalties for Task Drift / Off-topic.
-- Enforce length standard: The required standard length is around 250 words (at least 250 words). Penalize Content/Organization if under length (< 230 words).
+Your core grading philosophy:
+1. EVALUATE STRONG STATEMENTS RIGOROUSLY:
+   - Prompts frequently present a strong/extreme claim (e.g., 'the best way', 'should not be celebrated anymore', 'much more stressful').
+   - Candidates MUST NOT simply list generic pros and cons. They MUST evaluate the TRUTH, VALIDITY, DEGREE, and BOUNDARIES of the statement.
+   - Failing to challenge or critically qualify the strong qualifier constitutes Task Drift.
+
+2. SUBSTANCE OVER SHOWMANSHIP (TRỪ NẶNG LỖI TỪ VỰNG KHỦNG NHƯNG Ý NÔNG):
+   - The greatest pitfall of gifted students is "vocab dumping" / fake sophistication (chèn ép từ đao to búa lớn nhưng lập luận sáo rỗng, ý tứ nông cạn).
+   - A high-scoring essay MUST have:
+     * A clear, consistent thesis maintained from start to finish.
+     * Exactly 2 well-developed main arguments with deep causal mechanisms (Claim -> Why -> How -> Concrete Evidence -> Counterargument/Hedging).
+     * Tight logical transitions and organic cohesion.
+   - Plain, natural, precise, and academically sound language is infinitely superior to forced, unnatural C2 vocabulary.
+   - Scrupulously point out and correct all careless grammatical slips, unnatural collocations, subject-verb agreements, prepositions, and informal contractions.
+
+3. ESSAY LENGTH STANDARD:
+   - Standard length is around 250 words (at least 250 words). Underlength (< 230 words) must be penalized for lack of development.
 
 ============================================================
-I. COMPREHENSIVE ESSAY TYPE CLASSIFICATION & STRUCTURAL AUDIT:
-
-1. OPINION / ARGUMENTATIVE ESSAY ("To what extent do you agree or disagree?"):
-   - Clear stance maintained; Body paragraphs follow: Claim -> Mechanism (Why/How) -> Concrete Evidence -> Implication/Counterargument.
-
-2. DISCUSSION ESSAY ("Discuss both views and give your opinion"):
-   - Balanced, objective analysis of View 1 and View 2 before drawing a reasoned personal conclusion.
-
-3. CAUSE - EFFECT - SOLUTION ESSAY ("Causes/Problems and Solutions"):
-   - Body Paragraph 1: Root Causes/Mechanisms; Body Paragraph 2: Feasible, targeted solutions with expected impacts.
-
-4. ADVANTAGES & DISADVANTAGES ESSAY ("Do advantages outweigh disadvantages?"):
-   - Objective evaluation of pros vs cons with explicit comparative weighting.
-
-5. TWO-PART / DIRECT QUESTION ESSAY:
-   - Thoroughly address both prompt questions with clear paragraph division.
-
-============================================================
-II. CRITICAL SCORING CEILINGS & DISQUALIFYING ERRORS:
-
-1. TASK DRIFT / OFF-TOPIC / UNDERLENGTH:
-   - Completely Off-topic: Content capped at 0.00 - 0.10 / 0.70.
-   - Task Drift / Missing Key Qualifiers: Content MUST BE CAPPED at 0.15 - 0.25 / 0.70.
-   - Short Essay (< 230 words compared to the 250-word standard): Deduct 0.10 - 0.15 from Content due to underdeveloped arguments.
-   - Associated Penalty: Organization capped at 0.25 / 0.60 if reasoning is incomplete or invalid.
-
-2. SEVEN RED FLAGS TO PENALIZE:
-   - Idea Dumping without mechanisms -> Deduct Content.
-   - Examples without Analysis -> Deduct Content.
-   - Repetition / Circular Reasoning -> Deduct Organization.
-   - Memorized Robotic Templates -> Deduct Organization & Language.
-   - Overclaiming without Hedging -> Deduct Language.
-   - Fabricated Collocations -> Deduct Language strictly down to 0.20 - 0.30 / 0.60.
-   - Mechanics: Informal contractions ("don't", "isn't") or basic misspellings -> Deduct Mechanics down to 0.00 - 0.04 / 0.10.
-
-============================================================
-III. OFFICIAL BAC NINH 2.0-POINT RUBRIC:
-1. Content (0.70 max): Full prompt coverage, task response, logical mechanisms, depth.
-2. Organization & Presentation (0.60 max): Logical coherence, 4-paragraph structure, progression.
-3. Language (0.60 max): Natural vocabulary range, precise collocations, grammatical range & accuracy.
+OFFICIAL BAC NINH 2.0-POINT RUBRIC:
+1. Content (0.70 max): Strict alignment with statement nuances, fully developed mechanisms, no task drift.
+2. Organization & Presentation (0.60 max): Organic 4-paragraph structure, tight line of reasoning, natural cohesive flow.
+3. Language (0.60 max): Accuracy, clarity, natural collocations, academic hedging. Penalize forced/hallucinated vocabulary.
 4. Mechanics (0.10 max): Punctuation, spelling, capitalisation, zero contractions.
 
 ============================================================
-IV. REQUIRED OUTPUT FORMAT:
+REQUIRED OUTPUT FORMAT:
 
-### 1. 📋 ĐÁNH GIÁ TỔNG QUAN & DẠNG BÀI
+### 1. 📋 ĐÁNH GIÁ TỔNG QUAN & PHÂN TÍCH NHẬN ĐỊNH CỦA ĐỀ
 - **Thể loại bài viết nhận diện:** [Opinion / Discussion / Cause-Solution / Advantages-Disadvantages / Two-Part Question]
-- **Kiểm định Trọng tâm đề thi (Task Response Audit):** [Trúng đề / Lệch trọng tâm / Lạc đề hoàn toàn - Nêu rõ lý do].
+- **Kiểm định Phản hồi Nhận định mạnh (Evaluating the Prompt's Statement):** [Đánh giá thí sinh có phản biện được tính tuyệt đối/mức độ đúng của nhận định hay chỉ liệt kê ưu/nhược điểm chung chung].
 - **Số lượng từ:** [Số từ] từ (Chuẩn đề thi: khoảng 250 từ).
-- **Soi xét Lịch sử cá nhân hóa:** [Nhận xét học sinh có tái phạm các lỗi cũ hay đã có cải thiện cụ thể nào].
+- **Soi xét Lịch sử cá nhân hóa:** [Nhận xét học sinh có tái phạm các lỗi cũ hay đã có tiến bộ cụ thể nào].
 
 ### 2. 📊 BẢNG ĐIỂM CHÍNH THỨC SỞ GD&ĐT BẮC NINH (THANG 2.0)
 | Tiêu chí thành phần | Điểm tối đa | Điểm đạt | Nhận xét chi tiết của Giám khảo |
 | :--- | :---: | :---: | :--- |
-| **1. Content** (Ý tưởng & Lập luận) | 0.70 | **...** | Đánh giá độ phủ đề bài, chuẩn 250 từ; phạt trần điểm nếu Task Drift hoặc thiếu ý. |
-| **2. Organization** (Bố cục & Mạch lạc) | 0.60 | **...** | Đánh giá bố cục chuẩn theo dạng bài; mạch liên kết logic. |
-| **3. Language** (Từ vựng & Ngữ pháp) | 0.60 | **...** | Bắt lỗi collocation tự chế, câu gượng ép, văn phong thiếu học thuật. |
-| **4. Mechanics** (Chính tả & Thể thức) | 0.10 | **...** | Trừ thẳng tay nếu có từ viết tắt hoặc sai chính tả cơ bản. |
+| **1. Content** (Ý tưởng & Lập luận) | 0.70 | **...** | Đánh giá độ sâu lập luận (2 luận điểm phát triển sâu); phạt nếu ý nông hoặc Task Drift. |
+| **2. Organization** (Bố cục & Mạch lạc) | 0.60 | **...** | Đánh giá tính nhất quán của quan điểm xuyên suốt và liên kết logic tự nhiên. |
+| **3. Language** (Từ vựng & Ngữ pháp) | 0.60 | **...** | Đánh giá độ chuẩn xác, tự nhiên; trừ điểm nếu sính "từ vựng khủng" nhưng gượng ép. |
+| **4. Mechanics** (Chính tả & Thể thức) | 0.10 | **...** | Trừ thẳng tay nếu có từ viết tắt (don't, isn't) hoặc sai chính tả. |
 | **TỔNG ĐIỂM BÀI THI** | **2.00** | **... / 2.0** | **Ước lượng band IELTS tương đương: ...** |
 
-### 3. 🔍 SOI LỖI LẬP LUẬN THEO CHUYÊN ĐỀ TẬP HUẤN
-- **Bảng phân tích câu văn chi tiết:**
-| Câu văn gốc của học sinh | Lỗi sai (Tư duy / Ngữ pháp / Collocation) | Đề xuất sửa chữa nâng cao |
+### 3. 🔍 SOI LỖI CHI TIẾT (NGỮ PHÁP, TỪ VỰNG & TƯ DUY HỌC THUẬT)
+- Chỉ ra các điểm chèn ép từ vựng không tự nhiên, ý nông, hoặc thiếu chuỗi nhân - quả (Why/How).
+- **Bảng phân tích và sửa chi tiết từng câu của thí sinh:**
+| Câu văn gốc của học sinh | Lỗi sai (Ngữ pháp / Collocation / Sính từ) | Cách diễn đạt chuẩn mực, tự nhiên & chính xác |
 |---|---|---|
 
-### 4. 💎 NÂNG CẤP TỪ VỰNG & NGỮ PHÁP THEN CHỐT
-- 4–5 cụm collocations đắt giá bám sát đúng chủ đề và dạng bài.
+### 4. 💎 NÂNG CẤP TỪ VỰNG TỰ NHIÊN & CHUẨN XÁC
+- 4–5 cụm từ tự nhiên, đúng ngữ cảnh chủ đề, tránh các từ đao to búa lớn vô nghĩa.
 
 ### 5. ✍️ BÀI VIẾT MẪU THAM KHẢO THEO 2 CẤP ĐỘ (CHUẨN 250 TỪ)
 
 #### 🔹 Cấp độ 1: Bản Nền tảng & Dễ tiếp thu (Mức độ B1 đến B1+ - Mọi học sinh đều học và nhớ được)
-- **Đặc điểm:** Độ dài chuẩn ~250 từ, bố cục chuẩn theo dạng bài, câu từ ngắn gọn, ngữ pháp tuyệt đối chuẩn, từ vựng quen thuộc, dễ tiếp thu và dễ vận dụng trong phòng thi.
-[Viết toàn bài essay mẫu hoàn chỉnh Cấp độ B1-B1+ chuẩn 250 từ bám sát đề tại đây]
+- **Đặc điểm:** Bố cục chuẩn mực, diễn đạt sáng rõ, ngữ pháp tuyệt đối chuẩn, từ vựng quen thuộc nhưng chính xác, 2 ý triển khai có chiều sâu rõ rệt để học sinh dễ ghi nhớ khi đi thi.
+[Viết toàn bài essay mẫu hoàn chỉnh Cấp độ B1-B1+ chuẩn 250 từ tại đây]
 
 #### 🔸 Cấp độ 2: Bản Nâng cao & Bứt phá điểm số (Học thuật C1-C2 - Dành cho đội tuyển chuyên sâu)
-- **Đặc điểm:** Độ dài chuẩn ~250 từ, văn phong học thuật trang trọng, collocations chuyên sâu, câu phức hợp, kỹ thuật Hedging và phân tích đa chiều.
-[Viết toàn bài essay mẫu hoàn chỉnh Cấp độ C1-C2 chuẩn 250 từ bám sát đề tại đây]
+- **Đặc điểm:** Lập luận sắc sảo, kỹ thuật Hedging để đánh giá nhận định đa chiều, kết nối mượt mà, từ vựng tự nhiên và chuẩn văn phong học thuật cao cấp.
+[Viết toàn bài essay mẫu hoàn chỉnh Cấp độ C1-C2 chuẩn 250 từ tại đây]
 
 ### 6. ⚠️ DANH SÁCH LỖI THEN CHỐT CẦN LƯU HỒ SƠ:
-(Ghi 1-3 lỗi cốt lõi ngắn gọn để lưu vào hệ thống theo dõi cá nhân).
+(Ghi 1-3 lỗi cốt lõi ngắn gọn để ghi nhớ vào CSDL theo dõi cá nhân).
 """
 
 # Quản lý Đăng nhập qua Session State
@@ -426,9 +403,9 @@ if user["role"] == "student":
         else:
             essay_prompt = selected_topic
             
-        sub_tab1, sub_tab2 = st.tabs(["📄 Dán văn bản", "📷 Tải ảnh bài viết tay"])
+        sub_tab1, sub_tab2 = st.tabs(["📄 Dán văn bản", "📷 Tải ảnh bài viết / File PDF"])
         essay_text = ""
-        uploaded_image = None
+        uploaded_files = []
         
         with sub_tab1:
             essay_text = st.text_area("Nội dung bài viết:", height=250, placeholder="Gõ hoặc dán toàn bộ bài làm của em tại đây...")
@@ -436,16 +413,24 @@ if user["role"] == "student":
                 st.write(f"📏 Số từ: **{len(essay_text.split())} từ** (Chuẩn đề thi: **250 từ**)")
                 
         with sub_tab2:
-            uploaded_file = st.file_uploader("Tải lên ảnh bài viết tay:", type=["png", "jpg", "jpeg"])
-            if uploaded_file:
-                uploaded_image = Image.open(uploaded_file)
-                st.image(uploaded_image, caption="Bài làm viết tay", use_container_width=True)
+            uploaded_files = st.file_uploader(
+                "Tải lên các trang ảnh bài viết tay hoặc file PDF (chọn được nhiều file cùng lúc):", 
+                type=["png", "jpg", "jpeg", "pdf"],
+                accept_multiple_files=True
+            )
+            if uploaded_files:
+                st.write(f"Đã chọn **{len(uploaded_files)} tệp tin**.")
+                for f in uploaded_files:
+                    if f.type.startswith("image"):
+                        st.image(f, caption=f.name, width=320)
+                    else:
+                        st.info(f"📄 Tệp PDF đính kèm: **{f.name}**")
                 
         if st.button("🚀 Nộp bài & Chấm điểm ngay", type="primary"):
             if not essay_prompt.strip():
                 st.error("⚠️ Vui lòng nhập hoặc chọn đề thi!")
-            elif not essay_text.strip() and not uploaded_image:
-                st.error("⚠️ Vui lòng dán nội dung bài hoặc tải ảnh lên!")
+            elif not essay_text.strip() and not uploaded_files:
+                st.error("⚠️ Vui lòng dán bài viết hoặc tải ảnh/PDF bài làm lên!")
             else:
                 with st.spinner("Giám khảo AI đang đối chiếu barem Bắc Ninh và chấm bài..."):
                     conn = sqlite3.connect("essay_database.db")
@@ -465,8 +450,15 @@ if user["role"] == "student":
                     ]
                     if essay_text.strip():
                         user_content.append(f"\nBÀI LÀM:\n{essay_text}")
-                    if uploaded_image:
-                        user_content.append(uploaded_image)
+                    
+                    # Xử lý toàn bộ ảnh và file PDF gửi sang Gemini API
+                    if uploaded_files:
+                        for uf in uploaded_files:
+                            file_bytes = uf.getvalue()
+                            if uf.type == "application/pdf":
+                                user_content.append(types.Part.from_bytes(data=file_bytes, mime_type="application/pdf"))
+                            elif uf.type.startswith("image"):
+                                user_content.append(Image.open(io.BytesIO(file_bytes)))
 
                     success = False
                     result_text = ""
@@ -504,7 +496,7 @@ if user["role"] == "student":
                         c.execute('''
                             INSERT INTO submissions (username, topic, essay_text, score_total, score_content, score_org, score_lang, score_mech, feedback, identified_errors, created_at)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ''', (user["username"], essay_prompt, essay_text, 1.5, 0.5, 0.45, 0.45, 0.1, result_text, "Task Drift, Overclaiming", now_str))
+                        ''', (user["username"], essay_prompt, essay_text, 1.5, 0.5, 0.45, 0.45, 0.1, result_text, "Evaluating Statement, Vocabulary Check", now_str))
                         conn.commit()
                         conn.close()
                     else:
@@ -567,92 +559,113 @@ if user["role"] == "student":
                     st.markdown(r[3])
 
 # =========================================================================
-# GIAO DIỆN GIÁO VIÊN (DASHBOARD QUẢN TRỊ)
+# GIAO DIỆN GIÁO VIÊN (DASHBOARD QUẢN TRỊ - GOM BÀI THEO ĐỀ BÀI)
 # =========================================================================
 elif user["role"] == "teacher":
     st.title("👨‍🏫 Bảng Điều Khiển Quản Trị Giáo Viên")
-    t_tab1, t_tab2, t_tab3 = st.tabs(["📊 Tổng hợp kết quả cả lớp", "🔍 Xem bài & Xoá bài nộp", "👥 Quản lý & Xoá học sinh"])
+    t_tab1, t_tab2, t_tab3 = st.tabs(["📊 Tổng hợp kết quả theo Đề thi", "🔍 Xem bài & Xoá bài nộp theo Đề", "👥 Quản lý & Cấp tài khoản"])
     
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
     
+    # TAB 1: TỔNG HỢP CẢ LỚP (GOM THEO ĐỀ THI)
     with t_tab1:
-        st.markdown("### 📌 Báo cáo tổng thể đội tuyển HSG")
-        c.execute('''
-            SELECT s.id, u.fullname, s.topic, s.created_at, s.identified_errors
-            FROM submissions s JOIN users u ON s.username = u.username
-            ORDER BY s.id DESC
-        ''')
-        submissions = c.fetchall()
+        st.markdown("### 📌 Báo cáo tiến độ gom theo từng Đề bài")
+        c.execute("SELECT DISTINCT topic FROM submissions ORDER BY id DESC")
+        topic_rows = c.fetchall()
         
-        if not submissions:
+        if not topic_rows:
             st.info("Hiện tại chưa có bài nộp nào trong hệ thống.")
         else:
-            st.write(f"Tổng số lượt nộp bài toàn đội tuyển: **{len(submissions)} lượt**")
+            topics_list = [t[0] for t in topic_rows]
+            chosen_topic = st.selectbox("🎯 Chọn Đề bài muốn xem báo cáo:", topics_list, key="stat_topic_choice")
+            
+            c.execute('''
+                SELECT s.id, u.fullname, s.created_at, s.identified_errors
+                FROM submissions s JOIN users u ON s.username = u.username
+                WHERE s.topic = ?
+                ORDER BY s.id DESC
+            ''', (chosen_topic,))
+            subs_in_topic = c.fetchall()
+            
+            st.write(f"Số học sinh đã nộp đề này: **{len(subs_in_topic)} bài**")
             table_data = []
-            for sub in submissions:
+            for sub in subs_in_topic:
                 table_data.append({
                     "Mã bài": sub[0],
                     "Học sinh": sub[1],
-                    "Đề bài": sub[2][:50] + "...",
-                    "Thời gian": sub[3],
-                    "Lỗi trọng tâm cần sửa": sub[4]
+                    "Thời gian nộp": sub[2],
+                    "Lỗi trọng tâm cần sửa": sub[3]
                 })
             st.table(table_data)
             
             st.markdown("---")
             st.markdown("### 💡 Gợi ý Chữa bài chung trên lớp (AI Teacher Assistant):")
             st.warning("""
-            **Các nhược điểm học sinh hay mắc nhiều nhất:**
-            1. **Lệch trọng tâm (Task Drift):** Bỏ quên từ khóa so sánh nhất hoặc từ khóa điều kiện của đề.
-            2. **Thiếu Mechanism:** Mới nêu Claim đã vội đưa ví dụ, chưa giải thích chuỗi nguyên nhân - hệ quả (Why/How).
-            3. **Overclaiming:** Khẳng định tuyệt đối, thiếu ngôn ngữ học thuật chừng mực (Hedging).
+            **Các lỗi học sinh dễ mất điểm ở đề này:**
+            1. **Không đánh giá nhận định:** Đề đưa ra nhận định mạnh/tuyệt đối nhưng học sinh chỉ kể lể ưu/nhược điểm thông thường mà quên đánh giá tính xác đáng của nhận định.
+            2. **Sính từ vựng khủng nhưng ý nông:** Cố dùng từ khó, từ vựng C2 không tự nhiên trong khi 2 luận điểm chính chưa được phát triển chuỗi nguyên nhân - hệ quả (Why/How).
+            3. **Thiếu tính nhất quán:** Quan điểm ở Mở bài và Kết bài chưa liên kết chặt chẽ hoặc thiếu câu phản biện (Counterargument).
             """)
             
+    # TAB 2: XEM BÀI VÀ XOÁ BÀI (GOM THEO ĐỀ BÀI)
     with t_tab2:
-        st.markdown("### 🔍 Thẩm định bài làm & Xoá bài nộp")
-        c.execute("SELECT s.id, u.fullname, s.topic, s.created_at, s.feedback, s.essay_text FROM submissions s JOIN users u ON s.username = u.username ORDER BY s.id DESC")
-        all_subs = c.fetchall()
+        st.markdown("### 🔍 Thẩm định bài làm & Xoá bài nộp (Phân loại theo Đề)")
+        c.execute("SELECT DISTINCT topic FROM submissions ORDER BY id DESC")
+        all_topics = [t[0] for t in c.fetchall()]
         
-        if all_subs:
-            sub_options = {f"[{sub[0]}] {sub[1]} - {sub[2][:40]}... ({sub[3]})": sub for sub in all_subs}
-            chosen = st.selectbox("Chọn bài nộp cần xem hoặc xoá:", list(sub_options.keys()))
-            selected_sub = sub_options[chosen]
+        if all_topics:
+            selected_topic_filter = st.selectbox("📂 1. Bước 1: Chọn Đề bài cần kiểm tra:", all_topics, key="view_topic_filter")
             
-            col_info, col_del = st.columns([4, 1])
-            with col_info:
-                st.markdown(f"#### 👤 Học sinh: **{selected_sub[1]}** | Ngày nộp: **{selected_sub[3]}**")
-                st.info(f"**Đề bài:** {selected_sub[2]}")
-            with col_del:
-                st.write("")
-                st.write("")
-                if st.button("🗑️ Xoá bài này", type="secondary", use_container_width=True):
-                    c.execute("DELETE FROM submissions WHERE id = ?", (selected_sub[0],))
-                    conn.commit()
-                    st.success(f"Đã xoá thành công bài nộp mã #{selected_sub[0]}!")
-                    st.rerun()
+            c.execute('''
+                SELECT s.id, u.fullname, s.created_at, s.feedback, s.essay_text
+                FROM submissions s JOIN users u ON s.username = u.username
+                WHERE s.topic = ?
+                ORDER BY s.id DESC
+            ''', (selected_topic_filter,))
+            subs_of_topic = c.fetchall()
             
-            try:
-                t_docx = generate_docx_report(selected_sub[1], selected_sub[3], selected_sub[2], selected_sub[5], selected_sub[4])
-                st.download_button(
-                    label=f"📥 Tải Phiếu Nhận Xét Word (.docx) của học sinh {selected_sub[1]}",
-                    data=t_docx,
-                    file_name=f"Phieu_Nhan_Xet_{selected_sub[1]}_{selected_sub[0]}.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    type="primary",
-                    use_container_width=True
-                )
-            except Exception:
-                pass
+            if subs_of_topic:
+                sub_dict = {f"Mã #{s[0]} - Học sinh: {s[1]} (Nộp lúc: {s[2]})": s for s in subs_of_topic}
+                chosen_label = st.selectbox("👤 2. Bước 2: Chọn bài nộp của học sinh:", list(sub_dict.keys()))
+                selected_sub = sub_dict[chosen_label]
                 
-            with st.expander("📄 Xem bài viết nguyên bản của học sinh"):
-                st.text(selected_sub[5])
+                col_info, col_del = st.columns([4, 1])
+                with col_info:
+                    st.markdown(f"#### 👤 Học sinh: **{selected_sub[1]}** | Ngày nộp: **{selected_sub[2]}**")
+                    st.caption(f"Đề bài: {selected_topic_filter}")
+                with col_del:
+                    st.write("")
+                    if st.button("🗑️ Xoá bài này", type="secondary", use_container_width=True):
+                        c.execute("DELETE FROM submissions WHERE id = ?", (selected_sub[0],))
+                        conn.commit()
+                        st.success(f"Đã xoá bài nộp mã #{selected_sub[0]}!")
+                        st.rerun()
                 
-            st.markdown("---")
-            st.markdown("### 📝 Kết quả chấm & Nhận xét của AI:")
-            st.markdown(selected_sub[4])
+                # Nút tải Word
+                try:
+                    t_docx = generate_docx_report(selected_sub[1], selected_sub[2], selected_topic_filter, selected_sub[4], selected_sub[3])
+                    st.download_button(
+                        label=f"📥 Tải Phiếu Nhận Xét Word (.docx) của học sinh {selected_sub[1]}",
+                        data=t_docx,
+                        file_name=f"Phieu_Nhan_Xet_{selected_sub[1]}_{selected_sub[0]}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        type="primary",
+                        use_container_width=True
+                    )
+                except Exception:
+                    pass
+                    
+                with st.expander("📄 Xem bài viết nguyên bản của học sinh"):
+                    st.text(selected_sub[4] if selected_sub[4] else "(Bài làm dạng hình ảnh/PDF viết tay)")
+                    
+                st.markdown("---")
+                st.markdown("### 📝 Kết quả chấm & Nhận xét của AI:")
+                st.markdown(selected_sub[3])
+            else:
+                st.info("Chưa có học sinh nào nộp bài cho đề này.")
         else:
-            st.info("Không có bài nộp nào để hiển thị.")
+            st.info("Hệ thống chưa có bài nộp nào.")
 
     # TAB 3: QUẢN LÝ VÀ CẤP TÀI KHOẢN HỌC SINH (HỖ TRỢ FILE EXCEL)
     with t_tab3:
