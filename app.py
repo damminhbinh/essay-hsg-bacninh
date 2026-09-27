@@ -179,7 +179,7 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md,
     doc.save(bio)
     return bio.getvalue()
 
-# 2. Cơ sở dữ liệu SQLite (Nâng cấp hỗ trợ Đa giáo viên)
+# 2. Cơ sở dữ liệu SQLite (Nâng cấp phân quyền Admin tối cao)
 def init_db():
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
@@ -192,7 +192,6 @@ def init_db():
             teacher_username TEXT
         )
     ''')
-    # Tự động cập nhật thêm cột teacher_username nếu database cũ chưa có
     try:
         c.execute("ALTER TABLE users ADD COLUMN teacher_username TEXT")
     except Exception:
@@ -215,7 +214,7 @@ def init_db():
         )
     ''')
     
-    # Khởi tạo 2 tài khoản giáo viên mặc định nếu chưa có
+    # Tài khoản quản trị tối cao (Chỉ tài khoản này mới được tạo thêm giáo viên khác)
     c.execute("SELECT * FROM users WHERE username = 'giaovien'")
     if not c.fetchone():
         c.execute("INSERT INTO users VALUES ('giaovien', 'gv123456', 'Đỗ Thị Huyền', 'teacher', NULL)")
@@ -224,20 +223,21 @@ def init_db():
     if not c.fetchone():
         c.execute("INSERT INTO users VALUES ('gv_binh', 'gv123456', 'Đàm Thuận Minh Bình', 'teacher', NULL)")
 
-    # Gán giáo viên mặc định cho các học sinh mẫu
     c.execute("SELECT * FROM users WHERE username = 'hs01'")
     if not c.fetchone():
         c.execute("INSERT INTO users VALUES ('hs01', '123456', 'Nguyễn Văn An', 'student', 'giaovien')")
         c.execute("INSERT INTO users VALUES ('hs02', '123456', 'Trần Thị Bình', 'student', 'giaovien')")
         c.execute("INSERT INTO users VALUES ('hs03', '123456', 'Lê Hoàng Long', 'student', 'giaovien')")
     
-    # Cập nhật các học sinh cũ chưa có giáo viên quản lý về giaovien
     c.execute("UPDATE users SET teacher_username = 'giaovien' WHERE role = 'student' AND (teacher_username IS NULL OR teacher_username = '')")
     
     conn.commit()
     conn.close()
 
 init_db()
+
+# Danh sách tài khoản có quyền Quản trị tối cao (Super Admin)
+SUPER_ADMIN_USERS = ["giaovien", "gv_binh"]
 
 # 3. Ngân hàng đề thi Bắc Ninh
 DE_THI_BAC_NINH = [
@@ -251,27 +251,24 @@ DE_THI_BAC_NINH = [
     "Chuyên Bắc Ninh 2024-2025: 'Using social platforms such as Youtube, Tiktok, Facebook and Twitter is the best way for youngsters to gain fame and wealth.' To what extent do you agree or disagree?"
 ]
 
-# 4. Huấn luyện System Instruction chuẩn Barem 2.0 Bắc Ninh
+# 4. Huấn luyện System Instruction chuẩn Barem 2.0 Bắc Ninh & Thống kê từ vựng sau bài mẫu
 SYSTEM_INSTRUCTION = """
 You are an authoritative chief examiner for the English Gifted Student Examination (Kỳ thi Chọn Học sinh Giỏi Tỉnh & Chuyên Anh lớp 9) in Bac Ninh Province, Vietnam.
 
 Your core grading philosophy:
 1. EVALUATE STRONG STATEMENTS RIGOROUSLY:
-   - Prompts frequently present a strong/extreme claim (e.g., 'the best way', 'should not be celebrated anymore', 'much more stressful').
-   - Candidates MUST NOT simply list generic pros and cons. They MUST evaluate the TRUTH, VALIDITY, DEGREE, and BOUNDARIES of the statement.
-   - Failing to challenge or critically qualify the strong qualifier constitutes Task Drift.
+   - Candidates MUST evaluate the truth, validity, and boundaries of strong/extreme claims, rather than just listing pros/cons.
 
 2. SUBSTANCE OVER SHOWMANSHIP (TRỪ NẶNG LỖI TỪ VỰNG KHỦNG NHƯNG Ý NÔNG):
-   - The greatest pitfall of gifted students is "vocab dumping" / fake sophistication (chèn ép từ đao to búa lớn nhưng lập luận sáo rỗng, ý tứ nông cạn).
    - A high-scoring essay MUST have:
-     * A clear, consistent thesis maintained from start to finish.
+     * A clear, consistent thesis maintained throughout.
      * Exactly 2 well-developed main arguments with deep causal mechanisms (Claim -> Why -> How -> Concrete Evidence -> Counterargument/Hedging).
      * Tight logical transitions and organic cohesion.
-   - Plain, natural, precise, and academically sound language is infinitely superior to forced, unnatural C2 vocabulary.
-   - Scrupulously point out and correct all careless grammatical slips, unnatural collocations, subject-verb agreements, prepositions, and informal contractions.
+   - Plain, natural, precise, and academically sound language is vastly superior to forced, unnatural vocabulary.
+   - Point out and correct all careless grammatical slips, unnatural collocations, and informal contractions.
 
 3. ESSAY LENGTH STANDARD:
-   - Standard length is around 250 words (at least 250 words). Underlength (< 230 words) must be penalized for lack of development.
+   - Standard length is around 250 words (at least 250 words). Underlength (< 230 words) must be penalized.
 
 ============================================================
 OFFICIAL BAC NINH 2.0-POINT RUBRIC:
@@ -299,7 +296,6 @@ REQUIRED OUTPUT FORMAT:
 | **TỔNG ĐIỂM BÀI THI** | **2.00** | **... / 2.0** | **Ước lượng band IELTS tương đương: ...** |
 
 ### 3. 🔍 SOI LỖI CHI TIẾT (NGỮ PHÁP, TỪ VỰNG & TƯ DUY HỌC THUẬT)
-- Chỉ ra các điểm chèn ép từ vựng không tự nhiên, ý nông, hoặc thiếu chuỗi nhân - quả (Why/How).
 - **Bảng phân tích và sửa chi tiết từng câu của thí sinh:**
 | Câu văn gốc của học sinh | Lỗi sai (Ngữ pháp / Collocation / Sính từ) | Cách diễn đạt chuẩn mực, tự nhiên & chính xác |
 |---|---|---|
@@ -307,15 +303,35 @@ REQUIRED OUTPUT FORMAT:
 ### 4. 💎 NÂNG CẤP TỪ VỰNG TỰ NHIÊN & CHUẨN XÁC
 - 4–5 cụm từ tự nhiên, đúng ngữ cảnh chủ đề, tránh các từ đao to búa lớn vô nghĩa.
 
-### 5. ✍️ BÀI VIẾT MẪU THAM KHẢO THEO 2 CẤP ĐỘ (CHUẨN 250 TỪ)
+### 5. ✍️ BÀI VIẾT MẪU THAM KHẢO THEO 2 CẤP ĐỘ (CHUẨN ~250 TỪ)
 
 #### 🔹 Cấp độ 1: Bản Nền tảng & Dễ tiếp thu (Mức độ B1 đến B1+ - Mọi học sinh đều học và nhớ được)
-- **Đặc điểm:** Bố cục chuẩn mực, diễn đạt sáng rõ, ngữ pháp tuyệt đối chuẩn, từ vựng quen thuộc nhưng chính xác, 2 ý triển khai có chiều sâu rõ rệt để học sinh dễ ghi nhớ khi đi thi.
+- **Đặc điểm:** Bố cục chuẩn mực, diễn đạt sáng rõ, ngữ pháp tuyệt đối chuẩn, từ vựng quen thuộc nhưng chính xác, 2 ý triển khai có chiều sâu rõ rệt.
 [Viết toàn bài essay mẫu hoàn chỉnh Cấp độ B1-B1+ chuẩn 250 từ tại đây]
+
+* **Bảng thống kê 5–10 từ vựng / cụm từ / mẫu câu hay của Cấp độ 1:**
+| STT | Từ vựng / Cụm từ / Mẫu câu | Phiên âm quốc tế (IPA) | Dịch nghĩa & Ngữ cảnh sử dụng |
+|:---:|---|---|---|
+| 1 | ... | /.../ | ... |
+| 2 | ... | /.../ | ... |
+| 3 | ... | /.../ | ... |
+| 4 | ... | /.../ | ... |
+| 5 | ... | /.../ | ... |
+
+---
 
 #### 🔸 Cấp độ 2: Bản Nâng cao & Bứt phá điểm số (Học thuật C1-C2 - Dành cho đội tuyển chuyên sâu)
 - **Đặc điểm:** Lập luận sắc sảo, kỹ thuật Hedging để đánh giá nhận định đa chiều, kết nối mượt mà, từ vựng tự nhiên và chuẩn văn phong học thuật cao cấp.
 [Viết toàn bài essay mẫu hoàn chỉnh Cấp độ C1-C2 chuẩn 250 từ tại đây]
+
+* **Bảng thống kê 5–10 từ vựng / cụm collocations / cấu trúc học thuật tinh hoa của Cấp độ 2:**
+| STT | Từ vựng / Collocation / Cấu trúc | Phiên âm quốc tế (IPA) | Dịch nghĩa & Giá trị biểu đạt học thuật |
+|:---:|---|---|---|
+| 1 | ... | /.../ | ... |
+| 2 | ... | /.../ | ... |
+| 3 | ... | /.../ | ... |
+| 4 | ... | /.../ | ... |
+| 5 | ... | /.../ | ... |
 
 ### 6. ⚠️ DANH SÁCH LỖI THEN CHỐT CẦN LƯU HỒ SƠ:
 (Ghi 1-3 lỗi cốt lõi ngắn gọn để ghi nhớ vào CSDL theo dõi cá nhân).
@@ -377,7 +393,8 @@ if not st.session_state.logged_in:
 # GIAO DIỆN ĐÃ ĐĂNG NHẬP
 user = st.session_state.user
 st.sidebar.markdown(f"### 👤 Xin chào: **{user['fullname']}**")
-st.sidebar.caption(f"Vai trò: {'Giáo viên phụ trách' if user['role'] == 'teacher' else 'Học sinh đội tuyển'}")
+role_label = "Giáo viên Quản trị Trưởng" if user["username"] in SUPER_ADMIN_USERS else ("Giáo viên phụ trách" if user['role'] == 'teacher' else "Học sinh đội tuyển")
+st.sidebar.caption(f"Vai trò: {role_label}")
 
 with st.sidebar.expander("🔑 Đổi mật khẩu"):
     with st.form("change_pw_form"):
@@ -422,7 +439,6 @@ if user["role"] == "student":
     st.title("📝 Nộp Bài & Theo Dõi Tiến Độ Cá Nhân")
     tab_submit, tab_history = st.tabs(["🚀 Nộp bài Essay mới", "📈 Hồ sơ & Lịch sử cá nhân"])
     
-    # Tìm tên Giáo viên phụ trách học sinh này
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
     c.execute("SELECT fullname FROM users WHERE username = ?", (user.get("teacher_username", "giaovien"),))
@@ -591,16 +607,27 @@ if user["role"] == "student":
                     st.markdown(r[3])
 
 # =========================================================================
-# GIAO DIỆN GIÁO VIÊN (DASHBOARD RIÊNG CHO MỖI GIÁO VIÊN)
+# GIAO DIỆN GIÁO VIÊN (PHÂN QUYỀN CHẶT CHẼ THEO TỪNG GIÁO VIÊN)
 # =========================================================================
 elif user["role"] == "teacher":
+    is_super_admin = user["username"] in SUPER_ADMIN_USERS
+    
     st.title(f"👨‍🏫 Bảng Quản Trị Lớp: Thầy/Cô {user['fullname']}")
-    t_tab1, t_tab2, t_tab3, t_tab4 = st.tabs([
-        "📊 Tổng hợp bài theo Đề thi", 
-        "🔍 Xem & Chữa bài của lớp", 
-        "👥 Quản lý học sinh của tôi",
-        "⚙️ Thêm tài khoản Giáo viên mới"
-    ])
+    
+    # Chỉ Admin trưởng mới có Tab 4 (Thêm tài khoản Giáo viên)
+    if is_super_admin:
+        t_tab1, t_tab2, t_tab3, t_tab4 = st.tabs([
+            "📊 Tổng hợp bài theo Đề thi", 
+            "🔍 Xem & Chữa bài của lớp", 
+            "👥 Quản lý học sinh của tôi",
+            "⚙️ Cấp tài khoản Giáo viên mới"
+        ])
+    else:
+        t_tab1, t_tab2, t_tab3 = st.tabs([
+            "📊 Tổng hợp bài theo Đề thi", 
+            "🔍 Xem & Chữa bài của lớp", 
+            "👥 Quản lý học sinh của tôi"
+        ])
     
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
@@ -794,32 +821,33 @@ elif user["role"] == "teacher":
         else:
             st.caption("Chưa có học sinh nào.")
 
-    # TAB 4: CẤP THÊM TÀI KHOẢN GIÁO VIÊN MỚI
-    with t_tab4:
-        st.markdown("### 👨‍🏫 Cấp thêm tài khoản Giáo viên mới")
-        st.caption("Tài khoản giáo viên mới tạo sẽ có không gian quản lý lớp, danh sách học sinh và báo cáo bài nộp hoàn toàn độc lập.")
-        
-        with st.form("create_teacher_form"):
-            new_t_user = st.text_input("Tên đăng nhập Giáo viên:", placeholder="Ví dụ: gv_anh9a")
-            new_t_pass = st.text_input("Mật khẩu ban đầu:", value="gv123456")
-            new_t_name = st.text_input("Họ và tên Giáo viên:", placeholder="Ví dụ: Nguyễn Thị Lan")
-            btn_t = st.form_submit_button("Tạo tài khoản Giáo viên", type="primary")
-            if btn_t:
-                if new_t_user and new_t_pass and new_t_name:
-                    try:
-                        c.execute("INSERT INTO users VALUES (?, ?, ?, 'teacher', NULL)", (new_t_user.strip(), new_t_pass.strip(), new_t_name.strip()))
-                        conn.commit()
-                        st.success(f"🎉 Đã tạo thành công tài khoản cho Giáo viên: **{new_t_name}** (Username: `{new_t_user}`)!")
-                        st.rerun()
-                    except Exception:
-                        st.error("Tên đăng nhập này đã tồn tại, vui lòng chọn tên khác!")
-                else:
-                    st.warning("Vui lòng nhập đầy đủ thông tin.")
-                    
-        st.markdown("---")
-        st.markdown("#### 📋 Danh sách các Giáo viên hiện có trong hệ thống:")
-        c.execute("SELECT username, fullname FROM users WHERE role = 'teacher'")
-        all_t = c.fetchall()
-        st.table([{"Tên đăng nhập": t[0], "Họ và tên Giáo viên": t[1]} for t in all_t])
+    # TAB 4: CẤP THÊM TÀI KHOẢN GIÁO VIÊN MỚI (CHỈ HIỂN THỊ VỚI TÀI KHOẢN QUẢN TRỊ TRƯỞNG)
+    if is_super_admin:
+        with t_tab4:
+            st.markdown("### 👑 Khu vực Quản trị Trưởng: Cấp thêm tài khoản Giáo viên")
+            st.info("💡 **Lưu ý:** Chỉ có tài khoản Quản trị trưởng mới có quyền truy cập vào mục này. Các giáo viên được tạo ra sẽ chỉ quản lý lớp học sinh của riêng họ và không thể tạo thêm tài khoản giáo viên khác.")
+            
+            with st.form("create_teacher_form"):
+                new_t_user = st.text_input("Tên đăng nhập Giáo viên:", placeholder="Ví dụ: gv_lan")
+                new_t_pass = st.text_input("Mật khẩu ban đầu:", value="gv123456")
+                new_t_name = st.text_input("Họ và tên Giáo viên:", placeholder="Ví dụ: Nguyễn Thị Lan")
+                btn_t = st.form_submit_button("Tạo tài khoản Giáo viên", type="primary")
+                if btn_t:
+                    if new_t_user and new_t_pass and new_t_name:
+                        try:
+                            c.execute("INSERT INTO users VALUES (?, ?, ?, 'teacher', NULL)", (new_t_user.strip(), new_t_pass.strip(), new_t_name.strip()))
+                            conn.commit()
+                            st.success(f"🎉 Đã tạo thành công tài khoản cho Giáo viên: **{new_t_name}** (Username: `{new_t_user}`)!")
+                            st.rerun()
+                        except Exception:
+                            st.error("Tên đăng nhập này đã tồn tại, vui lòng chọn tên khác!")
+                    else:
+                        st.warning("Vui lòng nhập đầy đủ thông tin.")
+                        
+            st.markdown("---")
+            st.markdown("#### 📋 Danh sách tất cả Giáo viên trong hệ thống:")
+            c.execute("SELECT username, fullname FROM users WHERE role = 'teacher'")
+            all_t = c.fetchall()
+            st.table([{"Tên đăng nhập": t[0], "Họ và tên Giáo viên": t[1], "Quyền hạn": "Quản trị trưởng (Super Admin)" if t[0] in SUPER_ADMIN_USERS else "Giáo viên bộ môn"} for t in all_t])
         
     conn.close()
