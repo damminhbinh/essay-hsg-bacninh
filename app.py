@@ -587,6 +587,7 @@ if user["role"] == "student":
 
                     # Danh sách model dự phòng: nếu model 1 quá tải 503, tự chuyển sang model 2
                     CANDIDATE_MODELS = [
+                        'gemini-3.8-flash',
                         'gemini-2.5-flash',
                         'gemini-2.5-flash-lite'
                     ]
