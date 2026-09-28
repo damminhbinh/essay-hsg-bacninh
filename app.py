@@ -1,6 +1,8 @@
 import streamlit as st
 import sqlite3
 from datetime import datetime
+from zoneinfo import ZoneInfo
+import time
 from google import genai
 from google.genai import types
 from PIL import Image
@@ -11,6 +13,10 @@ from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
+
+# Hàm lấy thời gian chuẩn múi giờ Việt Nam GMT+7
+def get_vn_time_str(fmt="%d/%m/%Y %H:%M"):
+    return datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).strftime(fmt)
 
 # 1. Cấu hình giao diện Web
 st.set_page_config(
@@ -44,27 +50,22 @@ def parse_scores_from_feedback(text):
         return s_content, s_org, s_lang, s_mech, s_total, errors_str
         
     try:
-        # Bắt điểm Content
         m_c = re.search(r'Content.*?(?:0\.70|0\.7)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
         if m_c:
             s_content = float(m_c.group(1))
         
-        # Bắt điểm Organization
         m_o = re.search(r'Organization.*?(?:0\.60|0\.6)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
         if m_o:
             s_org = float(m_o.group(1))
         
-        # Bắt điểm Language
         m_l = re.search(r'Language.*?(?:0\.60|0\.6)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
         if m_l:
             s_lang = float(m_l.group(1))
         
-        # Bắt điểm Mechanics
         m_m = re.search(r'Mechanics.*?(?:0\.10|0\.1)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
         if m_m:
             s_mech = float(m_m.group(1))
         
-        # Bắt Tổng điểm sau cùng (ưu tiên lấy số đã trừ phạt ở dòng TỔNG ĐIỂM BÀI THI)
         m_t = re.search(r'TỔNG ĐIỂM BÀI THI.*?(?:2\.00|2\.0)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
         if m_t:
             s_total = float(m_t.group(1))
@@ -271,7 +272,6 @@ def init_db():
         )
     ''')
     
-    # Khởi tạo giáo viên
     c.execute("SELECT * FROM users WHERE username = 'giaovien'")
     if not c.fetchone():
         c.execute("INSERT INTO users VALUES ('giaovien', 'gv123456', 'Đỗ Thị Huyền', 'teacher', NULL)")
@@ -280,7 +280,6 @@ def init_db():
     if not c.fetchone():
         c.execute("INSERT INTO users VALUES ('gv_binh', 'gv123456', 'Đàm Thuận Minh Bình', 'teacher', NULL)")
 
-    # Khởi tạo các mã đề mẫu nếu bảng topics rỗng
     c.execute("SELECT COUNT(*) FROM topics")
     if c.fetchone()[0] == 0:
         sample_topics = [
@@ -289,11 +288,11 @@ def init_db():
             ("OTC01", "'The advent of electronic devices has made our life much more stressful.' To what extent do you agree with this statement? Write an essay of around 250 words.", "gv_binh"),
             ("OTC02", "'Using social platforms such as Youtube, Tiktok, Facebook and Twitter is the best way for youngsters to gain fame and wealth.' To what extent do you agree or disagree? Write an essay of around 250 words.", "gv_binh")
         ]
-        now_init = datetime.now().strftime("%Y-%m-%d %H:%M")
+        now_init = get_vn_time_str("%Y-%m-%d %H:%M")
         for code, content, creator in sample_topics:
             c.execute("INSERT INTO topics VALUES (?, ?, ?, ?)", (code, content, creator, now_init))
 
-    # TỰ ĐỘNG QUÉT VÀ SỬA ĐIỂM THỰC TẾ CHO TẤT CẢ CÁC BÀI ĐÃ NỘP TRƯỚC ĐÂY
+    # TỰ ĐỘNG CẬP NHẬT ĐIỂM THỰC TẾ CHO TOÀN BỘ BÀI ĐÃ NỘP TRƯỚC ĐÂY
     try:
         c.execute("SELECT id, feedback FROM submissions")
         all_subs = c.fetchall()
@@ -530,7 +529,7 @@ elif "GEMINI_API_KEY" in st.secrets:
     active_api_keys = [st.secrets["GEMINI_API_KEY"]] + active_api_keys
 
 # =========================================================================
-# GIAO DIỆN HỌC SINH (CHỌN ĐỀ THEO MÃ ĐỀ ĐỊNH DANH)
+# GIAO DIỆN HỌC SINH
 # =========================================================================
 if user["role"] == "student":
     st.title("📝 Nộp Bài & Theo Dõi Tiến Độ Cá Nhân")
@@ -558,7 +557,7 @@ if user["role"] == "student":
         essay_prompt = topic_dict[selected_display]
         st.info(f"**Nội dung đề bài chi tiết ({selected_display.split(']')[0]}]):**\n\n{essay_prompt}")
 
-        # KIỂM TRA HỌC SINH ĐÃ NỘP MÃ ĐỀ NÀY CHƯA
+        # KIỂM TRA DUY NHẤT 1 LẦN: HỌC SINH ĐÃ NỘP MÃ ĐỀ NÀY CHƯA
         conn_check = sqlite3.connect("essay_database.db")
         c_check = conn_check.cursor()
         c_check.execute("SELECT id, created_at, score_total FROM submissions WHERE username = ? AND topic = ?", (user["username"], essay_prompt))
@@ -568,16 +567,7 @@ if user["role"] == "student":
         has_submitted = submitted_record is not None
         if has_submitted:
             st.warning(f"⚠️ **Thông báo:** Em đã hoàn thành bài thi cho mã đề này vào lúc **{submitted_record[1]}** (Điểm: **{submitted_record[2]}/2.0**). Theo quy định, mỗi đề chỉ được nộp và chấm **1 lần duy nhất**! Em vui lòng sang tab **'Hồ sơ & Lịch sử cá nhân'** để xem lại bài làm.")
-         # KIỂM TRA XEM HỌC SINH ĐÃ TỪNG NỘP ĐỀ NÀY CHƯA
-        conn_check = sqlite3.connect("essay_database.db")
-        c_check = conn_check.cursor()
-        c_check.execute("SELECT id, created_at, score_total FROM submissions WHERE username = ? AND topic = ?", (user["username"], essay_prompt))
-        submitted_record = c_check.fetchone()
-        conn_check.close()
-
-        has_submitted = submitted_record is not None
-        if has_submitted:
-            st.warning(f"⚠️ **Thông báo:** Em đã hoàn thành bài thi cho đề này vào lúc **{submitted_record[1]}** (Điểm: **{submitted_record[2]}/2.0**). Theo quy định, mỗi đề chỉ được nộp và chấm **1 lần duy nhất**! Em hãy chuyển sang tab **'Hồ sơ & Lịch sử cá nhân'** để xem lại bài làm.")   
+            
         sub_tab1, sub_tab2 = st.tabs(["📄 Dán văn bản", "📷 Tải ảnh bài viết / File PDF"])
         essay_text = ""
         uploaded_files = []
@@ -605,7 +595,7 @@ if user["role"] == "student":
             if has_submitted:
                 st.error("⚠️ Em đã nộp đề thi này rồi, không thể nộp lại!")
                 st.stop()
-            if not essay_prompt.strip():
+            elif not essay_prompt.strip():
                 st.error("⚠️ Vui lòng chọn hoặc nhập đề thi!")
             elif not essay_text.strip() and not uploaded_files:
                 st.error("⚠️ Vui lòng dán bài viết hoặc tải ảnh/PDF bài làm lên!")
@@ -637,20 +627,17 @@ if user["role"] == "student":
                             elif uf.type.startswith("image"):
                                 user_content.append(Image.open(io.BytesIO(file_bytes)))
 
-                    import time
-
                     success = False
                     result_text = ""
                     last_err = ""
 
-                    # Nhận toàn bộ danh sách API key (cả AQ.Ab8... và AIza...)
                     valid_api_keys = [k.strip() for k in active_api_keys if k.strip()]
 
                     if not valid_api_keys:
                         st.error("⚠️ Không tìm thấy API Key nào trong cấu hình Secrets. Vui lòng kiểm tra lại!")
                         st.stop()
 
-                    # Chỉ dùng các model thế hệ 3 được Google hỗ trợ chính thức
+                    # Ưu tiên Gemini 3.8 Flash, có fallback tự động
                     CANDIDATE_MODELS = [
                         'gemini-3.8-flash',
                         'gemini-3.5-flash',
@@ -682,16 +669,12 @@ if user["role"] == "student":
                                     break
                             except Exception as e:
                                 last_err = str(e)
-                                # Nếu gặp lỗi quá tải 503, đợi 1.5 giây rồi thử lại
                                 if "503" in str(e) or "UNAVAILABLE" in str(e):
                                     time.sleep(1.5)
-                                # Nếu model bị lỗi 404 hoặc hạn ngạch, bỏ qua để sang model/key tiếp theo
                                 continue
-                            if success:
-                                break
 
                     if success:
-                        now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+                        now_str = get_vn_time_str("%d/%m/%Y %H:%M")
                         st.session_state.last_graded_result = {
                             "topic": essay_prompt,
                             "essay_text": essay_text,
@@ -699,7 +682,6 @@ if user["role"] == "student":
                             "date_str": now_str
                         }
                         
-                        # Trích xuất điểm thực tế và lỗi thực tế từ kết quả chấm
                         s_c, s_o, s_l, s_m, s_tot, s_err = parse_scores_from_feedback(result_text)
                         
                         conn = sqlite3.connect("essay_database.db")
@@ -723,7 +705,7 @@ if user["role"] == "student":
                 st.download_button(
                     label="📥 BẤM VÀO ĐÂY ĐỂ TẢI PHIẾU NHẬN XÉT WORD (.DOCX) - CÓ CHỮ KÝ GIÁO VIÊN",
                     data=docx_bytes,
-                    file_name=f"Phieu_Nhan_Xet_{user['username']}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx",
+                    file_name=f"Phieu_Nhan_Xet_{user['username']}_{get_vn_time_str('%Y%m%d_%H%M')}.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     type="primary",
                     use_container_width=True
@@ -769,7 +751,7 @@ if user["role"] == "student":
                     st.markdown(r[3])
 
 # =========================================================================
-# GIAO DIỆN GIÁO VIÊN (QUẢN TRỊ ĐỀ THI, BẢNG ĐIỂM EXCEL & PHÂN QUYỀN)
+# GIAO DIỆN GIÁO VIÊN
 # =========================================================================
 elif user["role"] == "teacher":
     is_super_admin = user["username"] in SUPER_ADMIN_USERS
@@ -791,7 +773,7 @@ elif user["role"] == "teacher":
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
     
-    # TAB 1: BẢNG ĐIỂM EXCEL & TỔNG HỢP THEO MÃ ĐỀ HOẶC TẤT CẢ
+    # TAB 1: BẢNG ĐIỂM EXCEL & TỔNG HỢP
     with t_tab1:
         st.markdown(f"### 📊 Báo cáo kết quả & Xuất Bảng điểm Excel của lớp")
         
@@ -825,7 +807,6 @@ elif user["role"] == "teacher":
                 ''', (chosen_topic, user["username"]))
             subs = c.fetchall()
             
-            # Tạo DataFrame để hiển thị và xuất Excel
             df_export = pd.DataFrame(subs, columns=[
                 "Mã bài", "Họ và tên học sinh", "Đề bài", 
                 "Content (0.7)", "Org (0.6)", "Lang (0.6)", "Mech (0.1)", 
@@ -843,7 +824,7 @@ elif user["role"] == "teacher":
             st.download_button(
                 label="📥 Tải Bảng Điểm Excel (.xlsx) để lưu trữ",
                 data=buffer_excel.getvalue(),
-                file_name=f"Bang_Diem_HSG_{clean_topic_code}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                file_name=f"Bang_Diem_HSG_{clean_topic_code}_{get_vn_time_str('%Y%m%d_%H%M')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 type="primary"
             )
@@ -937,7 +918,7 @@ elif user["role"] == "teacher":
             if btn_create_topic:
                 if t_code and t_content:
                     try:
-                        now_t = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        now_t = get_vn_time_str("%Y-%m-%d %H:%M")
                         c.execute("INSERT INTO topics VALUES (?, ?, ?, ?)", (t_code, t_content.strip(), user["username"], now_t))
                         conn.commit()
                         st.success(f"🎉 Đã lưu thành công Mã đề: **[{t_code}]**!")
