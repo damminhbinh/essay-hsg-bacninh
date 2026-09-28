@@ -579,27 +579,48 @@ if user["role"] == "student":
                             elif uf.type.startswith("image"):
                                 user_content.append(Image.open(io.BytesIO(file_bytes)))
 
+                    import time
+
                     success = False
                     result_text = ""
                     last_err = ""
 
+                    # Danh sách model dự phòng: nếu model 1 quá tải 503, tự chuyển sang model 2
+                    CANDIDATE_MODELS = [
+                        'gemini-2.5-flash',
+                        'gemini-2.5-flash-lite',
+                        'gemini-2.5-pro'
+                    ]
+
                     for key in active_api_keys:
-                        try:
-                            client = genai.Client(api_key=key.strip())
-                            response = client.models.generate_content(
-                                model='gemini-3.8-flash',
-                                contents=user_content,
-                                config=types.GenerateContentConfig(
-                                    system_instruction=SYSTEM_INSTRUCTION,
-                                    temperature=0.15
-                                )
-                            )
-                            result_text = response.text
-                            success = True
+                        if success:
                             break
-                        except Exception as e:
-                            last_err = str(e)
-                            continue
+                        client = genai.Client(api_key=key.strip())
+                        
+                        for target_model in CANDIDATE_MODELS:
+                            # Thử gọi tối đa 2 lần cho mỗi model trước khi đổi
+                            for attempt in range(2):
+                                try:
+                                    response = client.models.generate_content(
+                                        model=target_model,
+                                        contents=user_content,
+                                        config=types.GenerateContentConfig(
+                                            system_instruction=SYSTEM_INSTRUCTION,
+                                            temperature=0.15
+                                        )
+                                    )
+                                    if response and response.text:
+                                        result_text = response.text
+                                        success = True
+                                        break
+                                except Exception as e:
+                                    last_err = str(e)
+                                    # Nếu gặp lỗi 503 quá tải, đợi 1.5s rồi thử lại
+                                    if "503" in str(e) or "UNAVAILABLE" in str(e):
+                                        time.sleep(1.5)
+                                    continue
+                            if success:
+                                break
 
                     if success:
                         now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
