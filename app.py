@@ -556,7 +556,16 @@ if user["role"] == "student":
         else:
             essay_prompt = topic_dict[selected_display]
             st.info(f"**Nội dung đề bài chi tiết ({selected_display.split(']')[0]}]):**\n\n{essay_prompt}")
-            
+         # KIỂM TRA XEM HỌC SINH ĐÃ TỪNG NỘP ĐỀ NÀY CHƯA
+        conn_check = sqlite3.connect("essay_database.db")
+        c_check = conn_check.cursor()
+        c_check.execute("SELECT id, created_at, score_total FROM submissions WHERE username = ? AND topic = ?", (user["username"], essay_prompt))
+        submitted_record = c_check.fetchone()
+        conn_check.close()
+
+        has_submitted = submitted_record is not None
+        if has_submitted:
+            st.warning(f"⚠️ **Thông báo:** Em đã hoàn thành bài thi cho đề này vào lúc **{submitted_record[1]}** (Điểm: **{submitted_record[2]}/2.0**). Theo quy định, mỗi đề chỉ được nộp và chấm **1 lần duy nhất**! Em hãy chuyển sang tab **'Hồ sơ & Lịch sử cá nhân'** để xem lại bài làm.")   
         sub_tab1, sub_tab2 = st.tabs(["📄 Dán văn bản", "📷 Tải ảnh bài viết / File PDF"])
         essay_text = ""
         uploaded_files = []
@@ -580,7 +589,10 @@ if user["role"] == "student":
                     else:
                         st.info(f"📄 Tệp PDF đính kèm: **{f.name}**")
                 
-        if st.button("🚀 Nộp bài & Chấm điểm ngay", type="primary"):
+        if st.button("🚀 Nộp bài & Chấm điểm ngay", type="primary", disabled=has_submitted):
+            if has_submitted:
+                st.error("⚠️ Em đã nộp đề thi này rồi, không thể nộp lại!")
+                st.stop()
             if not essay_prompt.strip():
                 st.error("⚠️ Vui lòng chọn hoặc nhập đề thi!")
             elif not essay_text.strip() and not uploaded_files:
