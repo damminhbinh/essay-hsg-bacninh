@@ -579,7 +579,7 @@ if user["role"] == "student":
                             elif uf.type.startswith("image"):
                                 user_content.append(Image.open(io.BytesIO(file_bytes)))
 
-                   import time
+                    import time
 
                     success = False
                     result_text = ""
