@@ -585,21 +585,20 @@ if user["role"] == "student":
                     result_text = ""
                     last_err = ""
 
-                    # Chấp nhận toàn bộ các key của thầy (cả AQ.Ab8... lẫn AIzaSy...)
+                    # Nhận toàn bộ danh sách API key (cả AQ.Ab8... và AIza...)
                     valid_api_keys = [k.strip() for k in active_api_keys if k.strip()]
 
                     if not valid_api_keys:
                         st.error("⚠️ Không tìm thấy API Key nào trong cấu hình Secrets. Vui lòng kiểm tra lại!")
                         st.stop()
 
-                    # ĐẶT GEMINI 3.8 FLASH LÀM CHỦ LỰC SỐ 1
+                    # Chỉ dùng các model thế hệ 3 được Google hỗ trợ chính thức
                     CANDIDATE_MODELS = [
                         'gemini-3.8-flash',
                         'gemini-3.5-flash',
-                        'gemini-2.5-flash'
+                        'gemini-3-flash'
                     ]
 
-                    # Vòng lặp xoay vòng qua từng API Key và Model
                     for key in valid_api_keys:
                         if success:
                             break
@@ -625,13 +624,10 @@ if user["role"] == "student":
                                     break
                             except Exception as e:
                                 last_err = str(e)
-                                # Nếu gặp lỗi 503 quá tải, đợi 1.5 giây rồi thử sang model dự phòng
+                                # Nếu gặp lỗi quá tải 503, đợi 1.5 giây rồi thử lại
                                 if "503" in str(e) or "UNAVAILABLE" in str(e):
                                     time.sleep(1.5)
-                                # Nếu gặp lỗi 429 (hết hạn mức phút của key này), chuyển ngay sang Key tiếp theo
-                                elif any(err in str(e) for err in ["429", "RESOURCE_EXHAUSTED"]):
-                                    time.sleep(1)
-                                    break
+                                # Nếu model bị lỗi 404 hoặc hạn ngạch, bỏ qua để sang model/key tiếp theo
                                 continue
                             if success:
                                 break
