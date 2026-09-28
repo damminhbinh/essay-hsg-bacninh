@@ -547,15 +547,27 @@ if user["role"] == "student":
     conn.close()
 
     topic_dict = {f"[{t[0]}] {t[1][:80]}...": f"[{t[0]}] {t[1]}" for t in db_topics}
-    topic_options = list(topic_dict.keys()) + ["-- Tự nhập đề bài tự do --"]
+    topic_options = list(topic_dict.keys())
 
     with tab_submit:
+        if not topic_options:
+            st.warning("⚠️ Hiện tại Thầy/Cô chưa mở mã đề thi nào. Em vui lòng quay lại sau!")
+            st.stop()
+            
         selected_display = st.selectbox("📌 Chọn Mã đề thi Giáo viên đã giao:", topic_options)
-        if selected_display == "-- Tự nhập đề bài tự do --":
-            essay_prompt = st.text_area("Nhập đề bài luận:", placeholder="Nhập đề bài tại đây...")
-        else:
-            essay_prompt = topic_dict[selected_display]
-            st.info(f"**Nội dung đề bài chi tiết ({selected_display.split(']')[0]}]):**\n\n{essay_prompt}")
+        essay_prompt = topic_dict[selected_display]
+        st.info(f"**Nội dung đề bài chi tiết ({selected_display.split(']')[0]}]):**\n\n{essay_prompt}")
+
+        # KIỂM TRA HỌC SINH ĐÃ NỘP MÃ ĐỀ NÀY CHƯA
+        conn_check = sqlite3.connect("essay_database.db")
+        c_check = conn_check.cursor()
+        c_check.execute("SELECT id, created_at, score_total FROM submissions WHERE username = ? AND topic = ?", (user["username"], essay_prompt))
+        submitted_record = c_check.fetchone()
+        conn_check.close()
+
+        has_submitted = submitted_record is not None
+        if has_submitted:
+            st.warning(f"⚠️ **Thông báo:** Em đã hoàn thành bài thi cho mã đề này vào lúc **{submitted_record[1]}** (Điểm: **{submitted_record[2]}/2.0**). Theo quy định, mỗi đề chỉ được nộp và chấm **1 lần duy nhất**! Em vui lòng sang tab **'Hồ sơ & Lịch sử cá nhân'** để xem lại bài làm.")
          # KIỂM TRA XEM HỌC SINH ĐÃ TỪNG NỘP ĐỀ NÀY CHƯA
         conn_check = sqlite3.connect("essay_database.db")
         c_check = conn_check.cursor()
