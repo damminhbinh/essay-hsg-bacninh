@@ -1131,11 +1131,18 @@ elif user["role"] == "teacher":
                 st.info("Chưa có học sinh nào trong lớp của Thầy/Cô.")
 
         st.markdown("---")
-        st.markdown(f"#### 📋 Danh sách học sinh hiện tại của lớp ({user['fullname']}):")
-        c.execute("SELECT username, fullname FROM users WHERE role = 'student' AND teacher_username = %s", (user["username"],))
+        c.execute("SELECT username, fullname FROM users WHERE role = 'student' AND teacher_username = %s ORDER BY username ASC", (user["username"],))
         current_students = c.fetchall()
+        total_hs = len(current_students)
+        
+        st.markdown(f"#### 📋 Danh sách học sinh hiện tại của lớp ({user['fullname']}) — Tổng số: **{total_hs} học sinh**")
+        
         if current_students:
-            st.table([{"Mã đăng nhập": s[0], "Họ và tên học sinh": s[1]} for s in current_students])
+            table_data = [
+                {"STT": idx + 1, "Mã đăng nhập": s[0], "Họ và tên học sinh": s[1]} 
+                for idx, s in enumerate(current_students)
+            ]
+            st.dataframe(table_data, use_container_width=True, hide_index=True)
         else:
             st.caption("Chưa có học sinh nào.")
 
