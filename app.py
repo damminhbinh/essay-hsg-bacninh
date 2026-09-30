@@ -760,6 +760,7 @@ elif user["role"] == "teacher":
     
     tab_list = [
         "📊 Bảng điểm Excel & Tổng hợp", 
+        "📤 Chấm hàng loạt bài thi giấy",
         "🔍 Xem & Chữa bài chi tiết", 
         "📌 Tạo & Quản lý Mã đề thi",
         "👥 Quản lý học sinh của tôi"
@@ -768,8 +769,8 @@ elif user["role"] == "teacher":
         tab_list.append("⚙️ Cấp tài khoản Giáo viên mới")
         
     tabs = st.tabs(tab_list)
-    t_tab1, t_tab2, t_tab_topics, t_tab3 = tabs[0], tabs[1], tabs[2], tabs[3]
-    
+    t_tab1, t_tab_batch, t_tab2, t_tab_topics, t_tab3 = tabs[0], tabs[1], tabs[2], tabs[3], tabs[4]
+   
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
     
@@ -828,7 +829,132 @@ elif user["role"] == "teacher":
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 type="primary"
             )
-            
+     # TAB MỚI: GIÁO VIÊN CHẤM HÀNG LOẠT BÀI THI GIẤY THEO MẪU PHIẾU
+    with t_tab_batch:
+        st.markdown("### 📤 Chấm hàng loạt bài thi tự luận từ ảnh chụp / bản scan phiếu làm bài")
+        st.caption("Chức năng dành cho giáo viên chấm tập trung khi thu phiếu thi giấy về. Mỗi file tải lên tương ứng với bài làm của 1 học sinh (có thể là file ảnh JPG/PNG hoặc file PDF).")
+
+        c.execute("SELECT topic_code, topic_content FROM topics ORDER BY topic_code ASC")
+        batch_topics = c.fetchall()
+        
+        if not batch_topics:
+            st.warning("⚠️ Hiện chưa có mã đề thi nào. Vui lòng tạo mã đề ở tab 'Tạo & Quản lý Mã đề thi' trước!")
+        else:
+            batch_topic_dict = {f"[{t[0]}] {t[1][:80]}...": f"[{t[0]}] {t[1]}" for t in batch_topics}
+            selected_batch_display = st.selectbox("📌 1. Chọn Mã đề thi của xấp bài cần chấm:", list(batch_topic_dict.keys()), key="batch_topic_sel")
+            batch_essay_prompt = batch_topic_dict[selected_batch_display]
+            st.info(f"**Đề thi áp dụng:** {batch_essay_prompt}")
+
+            uploaded_batch_files = st.file_uploader(
+                "📁 2. Chọn toàn bộ ảnh chụp / file PDF phiếu làm bài của học sinh (chọn nhiều file cùng lúc):",
+                type=["png", "jpg", "jpeg", "pdf"],
+                accept_multiple_files=True,
+                key="batch_files_uploader"
+            )
+
+            if uploaded_batch_files:
+                st.write(f"Đã chọn **{len(uploaded_batch_files)} bài thi** cần chấm.")
+
+                if st.button("🚀 Bắt đầu Chấm tự động toàn bộ xấp bài này", type="primary"):
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    
+                    valid_api_keys = [k.strip() for k in active_api_keys if k.strip()]
+                    CANDIDATE_MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-3-flash']
+
+                    # Lấy danh sách học sinh của giáo viên để tự động map tên
+                    c.execute("SELECT username, fullname FROM users WHERE role = 'student' AND teacher_username = ?", (user["username"],))
+                    my_students_mapping = {s[1].strip().lower(): s[0] for s in c.fetchall()}
+
+                    success_count = 0
+                    total_files = len(uploaded_batch_files)
+
+                    for idx, uploaded_file in enumerate(uploaded_batch_files):
+                        status_text.info(f"⏳ Đang xử lý bài {idx + 1}/{total_files}: **{uploaded_file.name}**...")
+                        
+                        file_bytes = uploaded_file.getvalue()
+                        user_content_batch = [
+                            "DƯỚI ĐÂY LÀ PHIẾU TRẢ LỜI ESSAY CHÍNH THỨC CỦA TRƯỜNG THCS THÂN NHÂN TRUNG.\n",
+                            "YÊU CẦU ĐẶC BIỆT:\n",
+                            "1. Hãy bóc tách chính xác phần thông tin ở đầu phiếu: 'Họ và tên', 'Lớp', 'Số báo danh' của học sinh.\n",
+                            "2. Ở dòng ĐẦU TIÊN CỦA PHẢN HỒI, ghi đúng cú pháp sau để hệ thống nhận diện:\n",
+                            "[THÔNG TIN THÍ SINH: Họ và tên: <Tên học sinh> | Lớp: <Lớp> | SBD: <Số báo danh>]\n\n",
+                            f"ĐỀ THI: {batch_essay_prompt}\n\n",
+                            "3. Đọc kỹ phần chữ viết tay trong mục 'BÀI LÀM CỦA HỌC SINH' và chấm điểm nghiêm ngặt theo barem Bắc Ninh đã được huấn luyện:"
+                        ]
+
+                        if uploaded_file.type == "application/pdf":
+                            user_content_batch.append(types.Part.from_bytes(data=file_bytes, mime_type="application/pdf"))
+                        else:
+                            user_content_batch.append(Image.open(io.BytesIO(file_bytes)))
+
+                        batch_graded_text = ""
+                        batch_success = False
+
+                        for key in valid_api_keys:
+                            if batch_success:
+                                break
+                            try:
+                                client = genai.Client(api_key=key)
+                            except Exception:
+                                continue
+
+                            for target_model in CANDIDATE_MODELS:
+                                try:
+                                    response = client.models.generate_content(
+                                        model=target_model,
+                                        contents=user_content_batch,
+                                        config=types.GenerateContentConfig(
+                                            system_instruction=SYSTEM_INSTRUCTION,
+                                            temperature=0.15
+                                        )
+                                    )
+                                    if response and response.text:
+                                        batch_graded_text = response.text
+                                        batch_success = True
+                                        break
+                                except Exception as e:
+                                    if "503" in str(e) or "UNAVAILABLE" in str(e):
+                                        time.sleep(1.5)
+                                    continue
+
+                        if batch_success:
+                            # Bóc tách tên học sinh từ phản hồi
+                            extracted_name = "Học sinh chưa rõ tên"
+                            name_match = re.search(r'\[THÔNG TIN THÍ SINH:.*?Họ và tên:\s*([^\|\]\n]+)', batch_graded_text, re.IGNORECASE)
+                            if name_match:
+                                extracted_name = name_match.group(1).strip()
+                            else:
+                                # Nếu AI không bóc tách được tên thì lấy tên file làm tên học sinh
+                                extracted_name = uploaded_file.name.rsplit('.', 1)[0]
+
+                            # Tìm username trong CSDL hoặc tạo mã tạm
+                            matched_username = my_students_mapping.get(extracted_name.lower())
+                            if not matched_username:
+                                matched_username = f"offline_{re.sub(r'[^a-zA-Z0-9]', '', extracted_name).lower()[:15]}"
+                                # Thêm nhanh vào bảng users nếu chưa có
+                                try:
+                                    c.execute("INSERT OR IGNORE INTO users VALUES (?, '123456', ?, 'student', ?)", (matched_username, extracted_name, user["username"]))
+                                except Exception:
+                                    pass
+
+                            # Bóc tách điểm số thành phần
+                            sc, so, sl, sm, stot, s_err = parse_scores_from_feedback(batch_graded_text)
+                            now_vn = get_vn_time_str("%d/%m/%Y %H:%M")
+
+                            c.execute('''
+                                INSERT INTO submissions (username, topic, essay_text, score_total, score_content, score_org, score_lang, score_mech, feedback, identified_errors, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ''', (matched_username, batch_essay_prompt, f"(Bài chấm giấy từ file {uploaded_file.name})", stot, sc, so, sl, sm, batch_graded_text, s_err, now_vn))
+                            conn.commit()
+
+                            success_count += 1
+                            st.write(f"✅ **Đã chấm xong ({idx+1}/{total_files}):** Thí sinh **{extracted_name}** — Điểm: **{stot}/2.0**")
+
+                        progress_bar.progress((idx + 1) / total_files)
+
+                    status_text.success(f"🎉 ĐÃ HOÀN TẤT! Chấm thành công **{success_count}/{total_files} bài thi**.")
+                    st.info("Thầy/Cô hãy chuyển sang tab **'Bảng điểm Excel & Tổng hợp'** để xem kết quả toàn diện và tải bảng điểm Excel của đợt thi này!")       
     # TAB 2: XEM BÀI VÀ XOÁ BÀI
     with t_tab2:
         st.markdown("### 🔍 Thẩm định bài làm & Xoá bài nộp của lớp")
