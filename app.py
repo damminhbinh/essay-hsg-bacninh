@@ -230,6 +230,7 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md,
 
 # 2. Cơ sở dữ liệu SQLite
 def init_db():
+    c.execute("UPDATE users SET teacher_username = 'giaovien' WHERE role = 'student' AND (teacher_username IS NULL OR teacher_username = '')")
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
     c.execute('''
@@ -795,16 +796,16 @@ elif user["role"] == "teacher":
             topics_list = ["-- Tất cả các đề bài --"] + [t[0] for t in topic_rows]
             chosen_topic = st.selectbox("🎯 Chọn Đề bài để xem hoặc xuất bảng điểm:", topics_list, key="stat_topic_choice")
             
-           if chosen_topic == "-- Tất cả các đề bài --":
+        if selected_topic_filter == "-- Tất cả các đề bài --":
                 if is_super_admin:
                     c.execute('''
-                        SELECT s.id, COALESCE(u.fullname, s.username), s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
+                        SELECT s.id, COALESCE(u.fullname, s.username), s.created_at, s.feedback, s.essay_text, s.topic
                         FROM submissions s LEFT JOIN users u ON s.username = u.username
                         ORDER BY s.id DESC
                     ''')
                 else:
                     c.execute('''
-                        SELECT s.id, u.fullname, s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
+                        SELECT s.id, u.fullname, s.created_at, s.feedback, s.essay_text, s.topic
                         FROM submissions s JOIN users u ON s.username = u.username
                         WHERE u.teacher_username = ?
                         ORDER BY s.id DESC
@@ -812,18 +813,18 @@ elif user["role"] == "teacher":
             else:
                 if is_super_admin:
                     c.execute('''
-                        SELECT s.id, COALESCE(u.fullname, s.username), s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
+                        SELECT s.id, COALESCE(u.fullname, s.username), s.created_at, s.feedback, s.essay_text, s.topic
                         FROM submissions s LEFT JOIN users u ON s.username = u.username
                         WHERE s.topic = ?
                         ORDER BY s.id DESC
-                    ''', (chosen_topic,))
+                    ''', (selected_topic_filter,))
                 else:
                     c.execute('''
-                        SELECT s.id, u.fullname, s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
+                        SELECT s.id, u.fullname, s.created_at, s.feedback, s.essay_text, s.topic
                         FROM submissions s JOIN users u ON s.username = u.username
                         WHERE s.topic = ? AND u.teacher_username = ?
                         ORDER BY s.id DESC
-                    ''', (chosen_topic, user["username"]))
+                    ''', (selected_topic_filter, user["username"]))
             
             df_export = pd.DataFrame(subs, columns=[
                 "Mã bài", "Họ và tên học sinh", "Đề bài", 
