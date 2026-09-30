@@ -778,12 +778,15 @@ elif user["role"] == "teacher":
     with t_tab1:
         st.markdown(f"### 📊 Báo cáo kết quả & Xuất Bảng điểm Excel của lớp")
         
-        c.execute('''
-            SELECT DISTINCT s.topic 
-            FROM submissions s JOIN users u ON s.username = u.username
-            WHERE u.teacher_username = ?
-            ORDER BY s.id DESC
-        ''', (user["username"],))
+        if is_super_admin:
+            c.execute('SELECT DISTINCT topic FROM submissions ORDER BY id DESC')
+        else:
+            c.execute('''
+                SELECT DISTINCT s.topic 
+                FROM submissions s JOIN users u ON s.username = u.username
+                WHERE u.teacher_username = ?
+                ORDER BY s.id DESC
+            ''', (user["username"],))
         topic_rows = c.fetchall()
         
         if not topic_rows:
