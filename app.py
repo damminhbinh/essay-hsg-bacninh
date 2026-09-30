@@ -72,7 +72,7 @@ def parse_scores_from_feedback(text):
         else:
             s_total = round(max(0.0, s_content + s_org + s_lang + s_mech), 2)
             
-        m_err = re.search(r'(?:6\.\s*⚠️\s*DANH SÁCH LỖI THEN CHỐT CẦN LƯU HỒ SƠ|DANH SÁCH LỖI THEN CHỐT)[:\s*\n]+(.*?)(?:\n###|\Z)', text, re.DOTALL | re.IGNORECASE)
+        m_err = re.search(r'(?:6\.\s*⚠️️\s*DANH SÁCH LỖI THEN CHỐT CẦN LƯU HỒ SƠ|DANH SÁCH LỖI THEN CHỐT)[:\s*\n]+(.*?)(?:\n###|\Z)', text, re.DOTALL | re.IGNORECASE)
         if m_err:
             raw_err = m_err.group(1).strip()
             cleaned_lines = [re.sub(r'^[\s*\-0-9.)]+', '', line).strip() for line in raw_err.split('\n') if line.strip()]
@@ -88,8 +88,7 @@ def parse_scores_from_feedback(text):
 # HÀM TẠO FILE DOCX CHUẨN THỂ THỨC (TIMES NEW ROMAN, CỠ 13PT, LỀ TRÁI 3CM, CÒN LẠI 2CM)
 def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md, teacher_name="Cô Đỗ Thị Huyền"):
     doc = Document()
-    sections = doc.sections
-    for section in sections:
+    for section in doc.sections:
         section.top_margin = Inches(0.79)     # 2.0 cm
         section.bottom_margin = Inches(0.79)  # 2.0 cm
         section.left_margin = Inches(1.18)    # 3.0 cm
@@ -230,7 +229,6 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md,
 
 # 2. Cơ sở dữ liệu SQLite
 def init_db():
-    c.execute("UPDATE users SET teacher_username = 'giaovien' WHERE role = 'student' AND (teacher_username IS NULL OR teacher_username = '')")
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
     c.execute('''
@@ -281,6 +279,12 @@ def init_db():
     if not c.fetchone():
         c.execute("INSERT INTO users VALUES ('gv_binh', 'gv123456', 'Đàm Thuận Minh Bình', 'teacher', NULL)")
 
+    # Gán học sinh cũ về cho giáo viên phụ trách để không bị ẩn dữ liệu
+    try:
+        c.execute("UPDATE users SET teacher_username = 'giaovien' WHERE role = 'student' AND (teacher_username IS NULL OR teacher_username = '')")
+    except Exception:
+        pass
+
     c.execute("SELECT COUNT(*) FROM topics")
     if c.fetchone()[0] == 0:
         sample_topics = [
@@ -292,20 +296,6 @@ def init_db():
         now_init = get_vn_time_str("%Y-%m-%d %H:%M")
         for code, content, creator in sample_topics:
             c.execute("INSERT INTO topics VALUES (?, ?, ?, ?)", (code, content, creator, now_init))
-
-    # CHỈ CẬP NHẬT 1 LẦN CHO CÁC BÀI BỊ LỖI ĐIỂM CŨ (TRÁNH BỊ TREO SERVER)
-    try:
-        c.execute("SELECT id, feedback FROM submissions WHERE score_total = 1.5 AND score_content = 0.5")
-        dummy_subs = c.fetchall()
-        for sub_id, fb_text in dummy_subs:
-            sc, so, sl, sm, stot, err_note = parse_scores_from_feedback(fb_text)
-            c.execute('''
-                UPDATE submissions 
-                SET score_content = ?, score_org = ?, score_lang = ?, score_mech = ?, score_total = ?, identified_errors = ?
-                WHERE id = ?
-            ''', (sc, so, sl, sm, stot, err_note, sub_id))
-    except Exception:
-        pass
 
     conn.commit()
     conn.close()
@@ -489,8 +479,10 @@ if not st.session_state.logged_in:
 
 # GIAO DIỆN ĐÃ ĐĂNG NHẬP
 user = st.session_state.user
+is_super_admin = user["username"] in SUPER_ADMIN_USERS
+
 st.sidebar.markdown(f"### 👤 Xin chào: **{user['fullname']}**")
-role_label = "Giáo viên Quản trị Trưởng" if user["username"] in SUPER_ADMIN_USERS else ("Giáo viên phụ trách" if user['role'] == 'teacher' else "Học sinh đội tuyển")
+role_label = "Giáo viên Quản trị Trưởng" if is_super_admin else ("Giáo viên phụ trách" if user['role'] == 'teacher' else "Học sinh đội tuyển")
 st.sidebar.caption(f"Vai trò: {role_label}")
 
 with st.sidebar.expander("🔑 Đổi mật khẩu"):
@@ -597,7 +589,7 @@ if user["role"] == "student":
                 st.error("⚠️ Em đã nộp đề thi này rồi, không thể nộp lại!")
                 st.stop()
             elif not essay_prompt.strip():
-                st.error("⚠️ Vui lòng chọn hoặc nhập đề thi!")
+                st.error("⚠️ Vui lòng chọn đề thi!")
             elif not essay_text.strip() and not uploaded_files:
                 st.error("⚠️ Vui lòng dán bài viết hoặc tải ảnh/PDF bài làm lên!")
             else:
@@ -638,7 +630,6 @@ if user["role"] == "student":
                         st.error("⚠️ Không tìm thấy API Key nào trong cấu hình Secrets. Vui lòng kiểm tra lại!")
                         st.stop()
 
-                    # Ưu tiên Gemini 3.8 Flash, có fallback tự động
                     CANDIDATE_MODELS = [
                         'gemini-3.8-flash',
                         'gemini-3.5-flash',
@@ -755,8 +746,6 @@ if user["role"] == "student":
 # GIAO DIỆN GIÁO VIÊN
 # =========================================================================
 elif user["role"] == "teacher":
-    is_super_admin = user["username"] in SUPER_ADMIN_USERS
-    
     st.title(f"👨‍🏫 Bảng Quản Trị Lớp: Thầy/Cô {user['fullname']}")
     
     tab_list = [
@@ -770,12 +759,16 @@ elif user["role"] == "teacher":
         tab_list.append("⚙️ Cấp tài khoản Giáo viên mới")
         
     tabs = st.tabs(tab_list)
-    t_tab1, t_tab_batch, t_tab2, t_tab_topics, t_tab3 = tabs[0], tabs[1], tabs[2], tabs[3], tabs[4]
-   
+    t_tab1 = tabs[0]
+    t_tab_batch = tabs[1]
+    t_tab2 = tabs[2]
+    t_tab_topics = tabs[3]
+    t_tab3 = tabs[4]
+    
     conn = sqlite3.connect("essay_database.db")
     c = conn.cursor()
     
-    # TAB 1: BẢNG ĐIỂM EXCEL & TỔNG HỢP
+    # TAB 1: BẢNG ĐIỂM EXCEL & TỔNG HỢP (HIỂN THỊ CẢ BÀI CŨ)
     with t_tab1:
         st.markdown(f"### 📊 Báo cáo kết quả & Xuất Bảng điểm Excel của lớp")
         
@@ -788,43 +781,45 @@ elif user["role"] == "teacher":
                 WHERE u.teacher_username = ?
                 ORDER BY s.id DESC
             ''', (user["username"],))
+            
         topic_rows = c.fetchall()
         
         if not topic_rows:
-            st.info("Học sinh trong danh sách của Thầy/Cô chưa nộp bài nào.")
+            st.info("Hiện tại chưa có học sinh nào nộp bài.")
         else:
             topics_list = ["-- Tất cả các đề bài --"] + [t[0] for t in topic_rows]
             chosen_topic = st.selectbox("🎯 Chọn Đề bài để xem hoặc xuất bảng điểm:", topics_list, key="stat_topic_choice")
             
-        if selected_topic_filter == "-- Tất cả các đề bài --":
+            if chosen_topic == "-- Tất cả các đề bài --":
                 if is_super_admin:
                     c.execute('''
-                        SELECT s.id, COALESCE(u.fullname, s.username), s.created_at, s.feedback, s.essay_text, s.topic
+                        SELECT s.id, COALESCE(u.fullname, s.username), s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
                         FROM submissions s LEFT JOIN users u ON s.username = u.username
                         ORDER BY s.id DESC
                     ''')
                 else:
                     c.execute('''
-                        SELECT s.id, u.fullname, s.created_at, s.feedback, s.essay_text, s.topic
+                        SELECT s.id, u.fullname, s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
                         FROM submissions s JOIN users u ON s.username = u.username
                         WHERE u.teacher_username = ?
                         ORDER BY s.id DESC
                     ''', (user["username"],))
-                else:
+            else:
                 if is_super_admin:
                     c.execute('''
-                        SELECT s.id, COALESCE(u.fullname, s.username), s.created_at, s.feedback, s.essay_text, s.topic
+                        SELECT s.id, COALESCE(u.fullname, s.username), s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
                         FROM submissions s LEFT JOIN users u ON s.username = u.username
                         WHERE s.topic = ?
                         ORDER BY s.id DESC
-                    ''', (selected_topic_filter,))
+                    ''', (chosen_topic,))
                 else:
                     c.execute('''
-                        SELECT s.id, u.fullname, s.created_at, s.feedback, s.essay_text, s.topic
+                        SELECT s.id, u.fullname, s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
                         FROM submissions s JOIN users u ON s.username = u.username
                         WHERE s.topic = ? AND u.teacher_username = ?
                         ORDER BY s.id DESC
-                    ''', (selected_topic_filter, user["username"]))
+                    ''', (chosen_topic, user["username"]))
+            subs = c.fetchall()
             
             df_export = pd.DataFrame(subs, columns=[
                 "Mã bài", "Họ và tên học sinh", "Đề bài", 
@@ -847,10 +842,11 @@ elif user["role"] == "teacher":
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 type="primary"
             )
-     # TAB MỚI: GIÁO VIÊN CHẤM HÀNG LOẠT BÀI THI GIẤY THEO MẪU PHIẾU
+
+    # TAB BATCH: GIÁO VIÊN CHẤM HÀNG LOẠT BÀI THI GIẤY THEO MẪU PHIẾU
     with t_tab_batch:
         st.markdown("### 📤 Chấm hàng loạt bài thi tự luận từ ảnh chụp / bản scan phiếu làm bài")
-        st.caption("Chức năng dành cho giáo viên chấm tập trung khi thu phiếu thi giấy về. Mỗi file tải lên tương ứng với bài làm của 1 học sinh (có thể là file ảnh JPG/PNG hoặc file PDF).")
+        st.caption("Chức năng dành cho giáo viên chấm tập trung khi thu phiếu thi giấy về. Mỗi file tải lên tương ứng với bài làm của 1 học sinh (file ảnh JPG/PNG hoặc file PDF).")
 
         c.execute("SELECT topic_code, topic_content FROM topics ORDER BY topic_code ASC")
         batch_topics = c.fetchall()
@@ -880,7 +876,6 @@ elif user["role"] == "teacher":
                     valid_api_keys = [k.strip() for k in active_api_keys if k.strip()]
                     CANDIDATE_MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-3-flash']
 
-                    # Lấy danh sách học sinh của giáo viên để tự động map tên
                     c.execute("SELECT username, fullname FROM users WHERE role = 'student' AND teacher_username = ?", (user["username"],))
                     my_students_mapping = {s[1].strip().lower(): s[0] for s in c.fetchall()}
 
@@ -937,26 +932,21 @@ elif user["role"] == "teacher":
                                     continue
 
                         if batch_success:
-                            # Bóc tách tên học sinh từ phản hồi
                             extracted_name = "Học sinh chưa rõ tên"
                             name_match = re.search(r'\[THÔNG TIN THÍ SINH:.*?Họ và tên:\s*([^\|\]\n]+)', batch_graded_text, re.IGNORECASE)
                             if name_match:
                                 extracted_name = name_match.group(1).strip()
                             else:
-                                # Nếu AI không bóc tách được tên thì lấy tên file làm tên học sinh
                                 extracted_name = uploaded_file.name.rsplit('.', 1)[0]
 
-                            # Tìm username trong CSDL hoặc tạo mã tạm
                             matched_username = my_students_mapping.get(extracted_name.lower())
                             if not matched_username:
                                 matched_username = f"offline_{re.sub(r'[^a-zA-Z0-9]', '', extracted_name).lower()[:15]}"
-                                # Thêm nhanh vào bảng users nếu chưa có
                                 try:
                                     c.execute("INSERT OR IGNORE INTO users VALUES (?, '123456', ?, 'student', ?)", (matched_username, extracted_name, user["username"]))
                                 except Exception:
                                     pass
 
-                            # Bóc tách điểm số thành phần
                             sc, so, sl, sm, stot, s_err = parse_scores_from_feedback(batch_graded_text)
                             now_vn = get_vn_time_str("%d/%m/%Y %H:%M")
 
@@ -972,10 +962,10 @@ elif user["role"] == "teacher":
                         progress_bar.progress((idx + 1) / total_files)
 
                     status_text.success(f"🎉 ĐÃ HOÀN TẤT! Chấm thành công **{success_count}/{total_files} bài thi**.")
-                    st.info("Thầy/Cô hãy chuyển sang tab **'Bảng điểm Excel & Tổng hợp'** để xem kết quả toàn diện và tải bảng điểm Excel của đợt thi này!")       
-    # TAB 2: XEM BÀI VÀ XOÁ BÀI
+                    st.info("Thầy/Cô hãy chuyển sang tab **'Bảng điểm Excel & Tổng hợp'** để xem kết quả toàn diện và tải bảng điểm Excel của đợt thi này!")
+
+    # TAB 2: XEM BÀI VÀ XOÁ BÀI (HIỂN THỊ CẢ BÀI CŨ)
     with t_tab2:
-        with t_tab2:
         st.markdown("### 🔍 Thẩm định bài làm & Xoá bài nộp của lớp")
         if is_super_admin:
             c.execute('SELECT DISTINCT topic FROM submissions ORDER BY id DESC')
@@ -993,19 +983,34 @@ elif user["role"] == "teacher":
             selected_topic_filter = st.selectbox("📂 1. Chọn Đề bài:", topic_options, key="view_topic_filter")
             
             if selected_topic_filter == "-- Tất cả các đề bài --":
-                c.execute('''
-                    SELECT s.id, u.fullname, s.created_at, s.feedback, s.essay_text, s.topic
-                    FROM submissions s JOIN users u ON s.username = u.username
-                    WHERE u.teacher_username = ?
-                    ORDER BY s.id DESC
-                ''', (user["username"],))
+                if is_super_admin:
+                    c.execute('''
+                        SELECT s.id, COALESCE(u.fullname, s.username), s.created_at, s.feedback, s.essay_text, s.topic
+                        FROM submissions s LEFT JOIN users u ON s.username = u.username
+                        ORDER BY s.id DESC
+                    ''')
+                else:
+                    c.execute('''
+                        SELECT s.id, u.fullname, s.created_at, s.feedback, s.essay_text, s.topic
+                        FROM submissions s JOIN users u ON s.username = u.username
+                        WHERE u.teacher_username = ?
+                        ORDER BY s.id DESC
+                    ''', (user["username"],))
             else:
-                c.execute('''
-                    SELECT s.id, u.fullname, s.created_at, s.feedback, s.essay_text, s.topic
-                    FROM submissions s JOIN users u ON s.username = u.username
-                    WHERE s.topic = ? AND u.teacher_username = ?
-                    ORDER BY s.id DESC
-                ''', (selected_topic_filter, user["username"]))
+                if is_super_admin:
+                    c.execute('''
+                        SELECT s.id, COALESCE(u.fullname, s.username), s.created_at, s.feedback, s.essay_text, s.topic
+                        FROM submissions s LEFT JOIN users u ON s.username = u.username
+                        WHERE s.topic = ?
+                        ORDER BY s.id DESC
+                    ''', (selected_topic_filter,))
+                else:
+                    c.execute('''
+                        SELECT s.id, u.fullname, s.created_at, s.feedback, s.essay_text, s.topic
+                        FROM submissions s JOIN users u ON s.username = u.username
+                        WHERE s.topic = ? AND u.teacher_username = ?
+                        ORDER BY s.id DESC
+                    ''', (selected_topic_filter, user["username"]))
                 
             subs_of_topic = c.fetchall()
             
@@ -1052,7 +1057,7 @@ elif user["role"] == "teacher":
             else:
                 st.info("Chưa có học sinh nào nộp bài.")
         else:
-            st.info("Hiện tại chưa có học sinh nào thuộc lớp của Thầy/Cô nộp bài.")
+            st.info("Hiện tại chưa có bài nộp nào trong hệ thống.")
 
     # TAB 3: TẠO VÀ QUẢN LÝ MÃ ĐỀ THI
     with t_tab_topics:
@@ -1100,7 +1105,7 @@ elif user["role"] == "teacher":
         else:
             st.info("Chưa có đề thi nào trong ngân hàng đề.")
 
-    # TAB 4: QUẢN LÝ HỌC SINH RIÊNG CỦA GIÁO VIÊN NÀY
+    # TAB 4: QUẢN LÝ HỌC SINH RIÊNG CỦA GIÁO VIÊN
     with t_tab3:
         st.markdown(f"### 👥 Danh sách học sinh do Thầy/Cô **{user['fullname']}** trực tiếp quản lý")
         
@@ -1190,8 +1195,8 @@ elif user["role"] == "teacher":
             st.caption("Chưa có học sinh nào.")
 
     # TAB 5: CẤP THÊM TÀI KHOẢN GIÁO VIÊN MỚI (CHỈ SUPER ADMIN)
-    if is_super_admin and len(tabs) > 4:
-        with tabs[4]:
+    if is_super_admin and len(tabs) > 5:
+        with tabs[5]:
             st.markdown("### 👑 Khu vực Quản trị Trưởng: Cấp thêm tài khoản Giáo viên")
             st.info("💡 **Lưu ý:** Chỉ tài khoản Quản trị trưởng mới có quyền truy cập tab này.")
             
