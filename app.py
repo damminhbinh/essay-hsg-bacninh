@@ -810,7 +810,7 @@ elif user["role"] == "teacher":
                         WHERE u.teacher_username = ?
                         ORDER BY s.id DESC
                     ''', (user["username"],))
-            else:
+                else:
                 if is_super_admin:
                     c.execute('''
                         SELECT s.id, COALESCE(u.fullname, s.username), s.created_at, s.feedback, s.essay_text, s.topic
