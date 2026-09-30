@@ -292,11 +292,11 @@ def init_db():
         for code, content, creator in sample_topics:
             c.execute("INSERT INTO topics VALUES (?, ?, ?, ?)", (code, content, creator, now_init))
 
-    # TỰ ĐỘNG CẬP NHẬT ĐIỂM THỰC TẾ CHO TOÀN BỘ BÀI ĐÃ NỘP TRƯỚC ĐÂY
+    # CHỈ CẬP NHẬT 1 LẦN CHO CÁC BÀI BỊ LỖI ĐIỂM CŨ (TRÁNH BỊ TREO SERVER)
     try:
-        c.execute("SELECT id, feedback FROM submissions")
-        all_subs = c.fetchall()
-        for sub_id, fb_text in all_subs:
+        c.execute("SELECT id, feedback FROM submissions WHERE score_total = 1.5 AND score_content = 0.5")
+        dummy_subs = c.fetchall()
+        for sub_id, fb_text in dummy_subs:
             sc, so, sl, sm, stot, err_note = parse_scores_from_feedback(fb_text)
             c.execute('''
                 UPDATE submissions 
