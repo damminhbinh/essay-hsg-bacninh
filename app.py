@@ -795,21 +795,35 @@ elif user["role"] == "teacher":
             topics_list = ["-- Tất cả các đề bài --"] + [t[0] for t in topic_rows]
             chosen_topic = st.selectbox("🎯 Chọn Đề bài để xem hoặc xuất bảng điểm:", topics_list, key="stat_topic_choice")
             
-            if chosen_topic == "-- Tất cả các đề bài --":
-                c.execute('''
-                    SELECT s.id, u.fullname, s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
-                    FROM submissions s JOIN users u ON s.username = u.username
-                    WHERE u.teacher_username = ?
-                    ORDER BY s.id DESC
-                ''', (user["username"],))
+           if chosen_topic == "-- Tất cả các đề bài --":
+                if is_super_admin:
+                    c.execute('''
+                        SELECT s.id, COALESCE(u.fullname, s.username), s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
+                        FROM submissions s LEFT JOIN users u ON s.username = u.username
+                        ORDER BY s.id DESC
+                    ''')
+                else:
+                    c.execute('''
+                        SELECT s.id, u.fullname, s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
+                        FROM submissions s JOIN users u ON s.username = u.username
+                        WHERE u.teacher_username = ?
+                        ORDER BY s.id DESC
+                    ''', (user["username"],))
             else:
-                c.execute('''
-                    SELECT s.id, u.fullname, s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
-                    FROM submissions s JOIN users u ON s.username = u.username
-                    WHERE s.topic = ? AND u.teacher_username = ?
-                    ORDER BY s.id DESC
-                ''', (chosen_topic, user["username"]))
-            subs = c.fetchall()
+                if is_super_admin:
+                    c.execute('''
+                        SELECT s.id, COALESCE(u.fullname, s.username), s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
+                        FROM submissions s LEFT JOIN users u ON s.username = u.username
+                        WHERE s.topic = ?
+                        ORDER BY s.id DESC
+                    ''', (chosen_topic,))
+                else:
+                    c.execute('''
+                        SELECT s.id, u.fullname, s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
+                        FROM submissions s JOIN users u ON s.username = u.username
+                        WHERE s.topic = ? AND u.teacher_username = ?
+                        ORDER BY s.id DESC
+                    ''', (chosen_topic, user["username"]))
             
             df_export = pd.DataFrame(subs, columns=[
                 "Mã bài", "Họ và tên học sinh", "Đề bài", 
@@ -960,13 +974,17 @@ elif user["role"] == "teacher":
                     st.info("Thầy/Cô hãy chuyển sang tab **'Bảng điểm Excel & Tổng hợp'** để xem kết quả toàn diện và tải bảng điểm Excel của đợt thi này!")       
     # TAB 2: XEM BÀI VÀ XOÁ BÀI
     with t_tab2:
+        with t_tab2:
         st.markdown("### 🔍 Thẩm định bài làm & Xoá bài nộp của lớp")
-        c.execute('''
-            SELECT DISTINCT s.topic 
-            FROM submissions s JOIN users u ON s.username = u.username
-            WHERE u.teacher_username = ?
-            ORDER BY s.id DESC
-        ''', (user["username"],))
+        if is_super_admin:
+            c.execute('SELECT DISTINCT topic FROM submissions ORDER BY id DESC')
+        else:
+            c.execute('''
+                SELECT DISTINCT s.topic 
+                FROM submissions s JOIN users u ON s.username = u.username
+                WHERE u.teacher_username = ?
+                ORDER BY s.id DESC
+            ''', (user["username"],))
         all_topics = [t[0] for t in c.fetchall()]
         
         if all_topics:
