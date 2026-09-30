@@ -1,5 +1,6 @@
 import streamlit as st
-import sqlite3
+import psycopg2
+from psycopg2 import pool
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import time
@@ -72,7 +73,7 @@ def parse_scores_from_feedback(text):
         else:
             s_total = round(max(0.0, s_content + s_org + s_lang + s_mech), 2)
             
-        m_err = re.search(r'(?:6\.\s*⚠️️\s*DANH SÁCH LỖI THEN CHỐT CẦN LƯU HỒ SƠ|DANH SÁCH LỖI THEN CHỐT)[:\s*\n]+(.*?)(?:\n###|\Z)', text, re.DOTALL | re.IGNORECASE)
+        m_err = re.search(r'(?:6\.\s*⚠\s*DANH SÁCH LỖI THEN CHỐT CẦN LƯU HỒ SƠ|DANH SÁCH LỖI THEN CHỐT)[:\s*\n]+(.*?)(?:\n###|\Z)', text, re.DOTALL | re.IGNORECASE)
         if m_err:
             raw_err = m_err.group(1).strip()
             cleaned_lines = [re.sub(r'^[\s*\-0-9.)]+', '', line).strip() for line in raw_err.split('\n') if line.strip()]
@@ -227,80 +228,13 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md,
     doc.save(bio)
     return bio.getvalue()
 
-# 2. Cơ sở dữ liệu SQLite
-def init_db():
-    conn = sqlite3.connect("essay_database.db")
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            username TEXT PRIMARY KEY,
-            password TEXT,
-            fullname TEXT,
-            role TEXT,
-            teacher_username TEXT
-        )
-    ''')
-    try:
-        c.execute("ALTER TABLE users ADD COLUMN teacher_username TEXT")
-    except Exception:
-        pass
-
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS topics (
-            topic_code TEXT PRIMARY KEY,
-            topic_content TEXT,
-            created_by TEXT,
-            created_at TEXT
-        )
-    ''')
-
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS submissions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT,
-            topic TEXT,
-            essay_text TEXT,
-            score_total REAL,
-            score_content REAL,
-            score_org REAL,
-            score_lang REAL,
-            score_mech REAL,
-            feedback TEXT,
-            identified_errors TEXT,
-            created_at TEXT
-        )
-    ''')
-    
-    c.execute("SELECT * FROM users WHERE username = 'giaovien'")
-    if not c.fetchone():
-        c.execute("INSERT INTO users VALUES ('giaovien', 'gv123456', 'Đỗ Thị Huyền', 'teacher', NULL)")
-    
-    c.execute("SELECT * FROM users WHERE username = 'gv_binh'")
-    if not c.fetchone():
-        c.execute("INSERT INTO users VALUES ('gv_binh', 'gv123456', 'Đàm Thuận Minh Bình', 'teacher', NULL)")
-
-    # Gán học sinh cũ về cho giáo viên phụ trách để không bị ẩn dữ liệu
-    try:
-        c.execute("UPDATE users SET teacher_username = 'giaovien' WHERE role = 'student' AND (teacher_username IS NULL OR teacher_username = '')")
-    except Exception:
-        pass
-
-    c.execute("SELECT COUNT(*) FROM topics")
-    if c.fetchone()[0] == 0:
-        sample_topics = [
-            ("HSG01", "Some people think that teenagers tend to be leading a less healthy life. To what extent do you agree or disagree? Write an essay of around 250 words.", "giaovien"),
-            ("HSG02", "'Tet holiday in Vietnam shouldn't be celebrated anymore.' To what extent do you agree or disagree with this statement? Write an essay of around 250 words.", "giaovien"),
-            ("OTC01", "'The advent of electronic devices has made our life much more stressful.' To what extent do you agree with this statement? Write an essay of around 250 words.", "gv_binh"),
-            ("OTC02", "'Using social platforms such as Youtube, Tiktok, Facebook and Twitter is the best way for youngsters to gain fame and wealth.' To what extent do you agree or disagree? Write an essay of around 250 words.", "gv_binh")
-        ]
-        now_init = get_vn_time_str("%Y-%m-%d %H:%M")
-        for code, content, creator in sample_topics:
-            c.execute("INSERT INTO topics VALUES (?, ?, ?, ?)", (code, content, creator, now_init))
-
-    conn.commit()
-    conn.close()
-
-init_db()
+# 2. Quản lý Kết nối Cơ sở Dữ liệu Đám mây Supabase (PostgreSQL)
+def get_db_connection():
+    db_url = st.secrets.get("DATABASE_URL")
+    if not db_url:
+        st.error("Chưa cấu hình biến DATABASE_URL trong Streamlit Secrets! Vui lòng cấu hình để tiếp tục.")
+        st.stop()
+    return psycopg2.connect(db_url)
 
 SUPER_ADMIN_USERS = ["giaovien", "gv_binh"]
 
@@ -433,10 +367,11 @@ if "last_graded_result" not in st.session_state:
     st.session_state.last_graded_result = None
 
 def login(username, password):
-    conn = sqlite3.connect("essay_database.db")
+    conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT username, fullname, role, teacher_username FROM users WHERE username = ? AND password = ?", (username.strip(), password.strip()))
+    c.execute("SELECT username, fullname, role, teacher_username FROM users WHERE username = %s AND password = %s", (username.strip(), password.strip()))
     user_record = c.fetchone()
+    c.close()
     conn.close()
     if user_record:
         st.session_state.logged_in = True
@@ -497,16 +432,17 @@ with st.sidebar.expander("🔑 Đổi mật khẩu"):
             elif new_pw != confirm_pw:
                 st.error("Mật khẩu xác nhận không khớp!")
             else:
-                conn = sqlite3.connect("essay_database.db")
+                conn = get_db_connection()
                 c = conn.cursor()
-                c.execute("SELECT password FROM users WHERE username = ?", (user["username"],))
+                c.execute("SELECT password FROM users WHERE username = %s", (user["username"],))
                 curr_db_pw = c.fetchone()
                 if curr_db_pw and curr_db_pw[0] == old_pw:
-                    c.execute("UPDATE users SET password = ? WHERE username = ?", (new_pw, user["username"]))
+                    c.execute("UPDATE users SET password = %s WHERE username = %s", (new_pw, user["username"]))
                     conn.commit()
                     st.success("Đổi mật khẩu thành công!")
                 else:
                     st.error("Mật khẩu hiện tại không đúng!")
+                c.close()
                 conn.close()
 
 if st.sidebar.button("Đăng xuất", use_container_width=True):
@@ -528,14 +464,15 @@ if user["role"] == "student":
     st.title("📝 Nộp Bài & Theo Dõi Tiến Độ Cá Nhân")
     tab_submit, tab_history = st.tabs(["🚀 Nộp bài Essay mới", "📈 Hồ sơ & Lịch sử cá nhân"])
     
-    conn = sqlite3.connect("essay_database.db")
+    conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT fullname FROM users WHERE username = ?", (user.get("teacher_username", "giaovien"),))
+    c.execute("SELECT fullname FROM users WHERE username = %s", (user.get("teacher_username", "giaovien"),))
     t_row = c.fetchone()
     my_teacher_name = t_row[0] if t_row else "Giáo viên phụ trách"
     
     c.execute("SELECT topic_code, topic_content FROM topics ORDER BY topic_code ASC")
     db_topics = c.fetchall()
+    c.close()
     conn.close()
 
     topic_dict = {f"[{t[0]}] {t[1][:80]}...": f"[{t[0]}] {t[1]}" for t in db_topics}
@@ -551,10 +488,11 @@ if user["role"] == "student":
         st.info(f"**Nội dung đề bài chi tiết ({selected_display.split(']')[0]}]):**\n\n{essay_prompt}")
 
         # KIỂM TRA DUY NHẤT 1 LẦN: HỌC SINH ĐÃ NỘP MÃ ĐỀ NÀY CHƯA
-        conn_check = sqlite3.connect("essay_database.db")
+        conn_check = get_db_connection()
         c_check = conn_check.cursor()
-        c_check.execute("SELECT id, created_at, score_total FROM submissions WHERE username = ? AND topic = ?", (user["username"], essay_prompt))
+        c_check.execute("SELECT id, created_at, score_total FROM submissions WHERE username = %s AND topic = %s", (user["username"], essay_prompt))
         submitted_record = c_check.fetchone()
+        c_check.close()
         conn_check.close()
 
         has_submitted = submitted_record is not None
@@ -594,10 +532,11 @@ if user["role"] == "student":
                 st.error("⚠️ Vui lòng dán bài viết hoặc tải ảnh/PDF bài làm lên!")
             else:
                 with st.spinner("Giám khảo AI đang đối chiếu barem Bắc Ninh và chấm bài..."):
-                    conn = sqlite3.connect("essay_database.db")
+                    conn = get_db_connection()
                     c = conn.cursor()
-                    c.execute("SELECT identified_errors FROM submissions WHERE username = ? ORDER BY id DESC LIMIT 3", (user["username"],))
+                    c.execute("SELECT identified_errors FROM submissions WHERE username = %s ORDER BY id DESC LIMIT 3", (user["username"],))
                     past_errors = c.fetchall()
+                    c.close()
                     conn.close()
                     
                     error_history_text = "Học sinh chưa có lịch sử nộp bài trước đó."
@@ -676,13 +615,14 @@ if user["role"] == "student":
                         
                         s_c, s_o, s_l, s_m, s_tot, s_err = parse_scores_from_feedback(result_text)
                         
-                        conn = sqlite3.connect("essay_database.db")
+                        conn = get_db_connection()
                         c = conn.cursor()
                         c.execute('''
                             INSERT INTO submissions (username, topic, essay_text, score_total, score_content, score_org, score_lang, score_mech, feedback, identified_errors, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ''', (user["username"], essay_prompt, essay_text, s_tot, s_c, s_o, s_l, s_m, result_text, s_err, now_str))
                         conn.commit()
+                        c.close()
                         conn.close()
                     else:
                         st.error(f"Hệ thống gặp sự cố khi chấm bài. Chi tiết: {last_err}")
@@ -716,10 +656,11 @@ if user["role"] == "student":
 
     with tab_history:
         st.markdown(f"### 📈 Hồ sơ theo dõi học tập của {user['fullname']}")
-        conn = sqlite3.connect("essay_database.db")
+        conn = get_db_connection()
         c = conn.cursor()
-        c.execute("SELECT id, topic, created_at, feedback, essay_text FROM submissions WHERE username = ? ORDER BY id DESC", (user["username"],))
+        c.execute("SELECT id, topic, created_at, feedback, essay_text FROM submissions WHERE username = %s ORDER BY id DESC", (user["username"],))
         rows = c.fetchall()
+        c.close()
         conn.close()
         
         if not rows:
@@ -765,21 +706,21 @@ elif user["role"] == "teacher":
     t_tab_topics = tabs[3]
     t_tab3 = tabs[4]
     
-    conn = sqlite3.connect("essay_database.db")
+    conn = get_db_connection()
     c = conn.cursor()
     
-    # TAB 1: BẢNG ĐIỂM EXCEL & TỔNG HỢP (HIỂN THỊ CẢ BÀI CŨ)
+    # TAB 1: BẢNG ĐIỂM EXCEL & TỔNG HỢP
     with t_tab1:
         st.markdown(f"### 📊 Báo cáo kết quả & Xuất Bảng điểm Excel của lớp")
         
         if is_super_admin:
-            c.execute('SELECT DISTINCT topic FROM submissions ORDER BY id DESC')
+            c.execute('SELECT DISTINCT topic FROM submissions ORDER BY topic ASC')
         else:
             c.execute('''
                 SELECT DISTINCT s.topic 
                 FROM submissions s JOIN users u ON s.username = u.username
-                WHERE u.teacher_username = ?
-                ORDER BY s.id DESC
+                WHERE u.teacher_username = %s
+                ORDER BY s.topic ASC
             ''', (user["username"],))
             
         topic_rows = c.fetchall()
@@ -801,7 +742,7 @@ elif user["role"] == "teacher":
                     c.execute('''
                         SELECT s.id, u.fullname, s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
                         FROM submissions s JOIN users u ON s.username = u.username
-                        WHERE u.teacher_username = ?
+                        WHERE u.teacher_username = %s
                         ORDER BY s.id DESC
                     ''', (user["username"],))
             else:
@@ -809,14 +750,14 @@ elif user["role"] == "teacher":
                     c.execute('''
                         SELECT s.id, COALESCE(u.fullname, s.username), s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
                         FROM submissions s LEFT JOIN users u ON s.username = u.username
-                        WHERE s.topic = ?
+                        WHERE s.topic = %s
                         ORDER BY s.id DESC
                     ''', (chosen_topic,))
                 else:
                     c.execute('''
                         SELECT s.id, u.fullname, s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
                         FROM submissions s JOIN users u ON s.username = u.username
-                        WHERE s.topic = ? AND u.teacher_username = ?
+                        WHERE s.topic = %s AND u.teacher_username = %s
                         ORDER BY s.id DESC
                     ''', (chosen_topic, user["username"]))
             subs = c.fetchall()
@@ -876,7 +817,7 @@ elif user["role"] == "teacher":
                     valid_api_keys = [k.strip() for k in active_api_keys if k.strip()]
                     CANDIDATE_MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-3-flash']
 
-                    c.execute("SELECT username, fullname FROM users WHERE role = 'student' AND teacher_username = ?", (user["username"],))
+                    c.execute("SELECT username, fullname FROM users WHERE role = 'student' AND teacher_username = %s", (user["username"],))
                     my_students_mapping = {s[1].strip().lower(): s[0] for s in c.fetchall()}
 
                     success_count = 0
@@ -943,16 +884,17 @@ elif user["role"] == "teacher":
                             if not matched_username:
                                 matched_username = f"offline_{re.sub(r'[^a-zA-Z0-9]', '', extracted_name).lower()[:15]}"
                                 try:
-                                    c.execute("INSERT OR IGNORE INTO users VALUES (?, '123456', ?, 'student', ?)", (matched_username, extracted_name, user["username"]))
+                                    c.execute("INSERT INTO users (username, password, fullname, role, teacher_username) VALUES (%s, '123456', %s, 'student', %s) ON CONFLICT (username) DO NOTHING", (matched_username, extracted_name, user["username"]))
+                                    conn.commit()
                                 except Exception:
-                                    pass
+                                    conn.rollback()
 
                             sc, so, sl, sm, stot, s_err = parse_scores_from_feedback(batch_graded_text)
                             now_vn = get_vn_time_str("%d/%m/%Y %H:%M")
 
                             c.execute('''
                                 INSERT INTO submissions (username, topic, essay_text, score_total, score_content, score_org, score_lang, score_mech, feedback, identified_errors, created_at)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                             ''', (matched_username, batch_essay_prompt, f"(Bài chấm giấy từ file {uploaded_file.name})", stot, sc, so, sl, sm, batch_graded_text, s_err, now_vn))
                             conn.commit()
 
@@ -964,17 +906,17 @@ elif user["role"] == "teacher":
                     status_text.success(f"🎉 ĐÃ HOÀN TẤT! Chấm thành công **{success_count}/{total_files} bài thi**.")
                     st.info("Thầy/Cô hãy chuyển sang tab **'Bảng điểm Excel & Tổng hợp'** để xem kết quả toàn diện và tải bảng điểm Excel của đợt thi này!")
 
-    # TAB 2: XEM BÀI VÀ XOÁ BÀI (HIỂN THỊ CẢ BÀI CŨ)
+    # TAB 2: XEM BÀI VÀ XOÁ BÀI
     with t_tab2:
         st.markdown("### 🔍 Thẩm định bài làm & Xoá bài nộp của lớp")
         if is_super_admin:
-            c.execute('SELECT DISTINCT topic FROM submissions ORDER BY id DESC')
+            c.execute('SELECT DISTINCT topic FROM submissions ORDER BY topic ASC')
         else:
             c.execute('''
                 SELECT DISTINCT s.topic 
                 FROM submissions s JOIN users u ON s.username = u.username
-                WHERE u.teacher_username = ?
-                ORDER BY s.id DESC
+                WHERE u.teacher_username = %s
+                ORDER BY s.topic ASC
             ''', (user["username"],))
         all_topics = [t[0] for t in c.fetchall()]
         
@@ -993,7 +935,7 @@ elif user["role"] == "teacher":
                     c.execute('''
                         SELECT s.id, u.fullname, s.created_at, s.feedback, s.essay_text, s.topic
                         FROM submissions s JOIN users u ON s.username = u.username
-                        WHERE u.teacher_username = ?
+                        WHERE u.teacher_username = %s
                         ORDER BY s.id DESC
                     ''', (user["username"],))
             else:
@@ -1001,14 +943,14 @@ elif user["role"] == "teacher":
                     c.execute('''
                         SELECT s.id, COALESCE(u.fullname, s.username), s.created_at, s.feedback, s.essay_text, s.topic
                         FROM submissions s LEFT JOIN users u ON s.username = u.username
-                        WHERE s.topic = ?
+                        WHERE s.topic = %s
                         ORDER BY s.id DESC
                     ''', (selected_topic_filter,))
                 else:
                     c.execute('''
                         SELECT s.id, u.fullname, s.created_at, s.feedback, s.essay_text, s.topic
                         FROM submissions s JOIN users u ON s.username = u.username
-                        WHERE s.topic = ? AND u.teacher_username = ?
+                        WHERE s.topic = %s AND u.teacher_username = %s
                         ORDER BY s.id DESC
                     ''', (selected_topic_filter, user["username"]))
                 
@@ -1030,7 +972,7 @@ elif user["role"] == "teacher":
                 with col_del:
                     st.write("")
                     if st.button("🗑️ Xoá bài này", type="secondary", use_container_width=True):
-                        c.execute("DELETE FROM submissions WHERE id = ?", (selected_sub[0],))
+                        c.execute("DELETE FROM submissions WHERE id = %s", (selected_sub[0],))
                         conn.commit()
                         st.success(f"Đã xoá bài nộp mã #{selected_sub[0]}!")
                         st.rerun()
@@ -1072,11 +1014,12 @@ elif user["role"] == "teacher":
                 if t_code and t_content:
                     try:
                         now_t = get_vn_time_str("%Y-%m-%d %H:%M")
-                        c.execute("INSERT INTO topics VALUES (?, ?, ?, ?)", (t_code, t_content.strip(), user["username"], now_t))
+                        c.execute("INSERT INTO topics (topic_code, topic_content, created_by, created_at) VALUES (%s, %s, %s, %s)", (t_code, t_content.strip(), user["username"], now_t))
                         conn.commit()
                         st.success(f"🎉 Đã lưu thành công Mã đề: **[{t_code}]**!")
                         st.rerun()
-                    except sqlite3.IntegrityError:
+                    except psycopg2.IntegrityError:
+                        conn.rollback()
                         st.error(f"Mã đề '{t_code}' đã tồn tại! Vui lòng đặt mã khác.")
                 else:
                     st.warning("Vui lòng điền đủ Mã đề và Nội dung đề thi!")
@@ -1098,7 +1041,7 @@ elif user["role"] == "teacher":
             
             del_t_code = st.selectbox("Chọn mã đề muốn xoá khỏi danh mục:", [t[0] for t in current_topics], key="del_topic_sel")
             if st.button("🗑️ Xoá mã đề này", type="secondary"):
-                c.execute("DELETE FROM topics WHERE topic_code = ?", (del_t_code,))
+                c.execute("DELETE FROM topics WHERE topic_code = %s", (del_t_code,))
                 conn.commit()
                 st.success(f"Đã xoá mã đề {del_t_code}!")
                 st.rerun()
@@ -1133,11 +1076,12 @@ elif user["role"] == "teacher":
                             fullname = str(row["Họ và tên"]).strip()
                             if u_code and fullname and u_code != "nan" and fullname != "nan":
                                 try:
-                                    c.execute("INSERT INTO users VALUES (?, '123456', ?, 'student', ?)", (u_code, fullname, user["username"]))
+                                    c.execute("INSERT INTO users (username, password, fullname, role, teacher_username) VALUES (%s, '123456', %s, 'student', %s)", (u_code, fullname, user["username"]))
+                                    conn.commit()
                                     created_count += 1
-                                except sqlite3.IntegrityError:
+                                except psycopg2.IntegrityError:
+                                    conn.rollback()
                                     skipped_count += 1
-                        conn.commit()
                         st.success(f"🎉 Hoàn tất! Đã thêm **{created_count}** học sinh vào lớp của Thầy/Cô (Bỏ qua {skipped_count} mã bị trùng).")
                         st.rerun()
             except Exception as ex:
@@ -1156,18 +1100,19 @@ elif user["role"] == "teacher":
                 if submit_btn:
                     if new_u and new_p and new_name:
                         try:
-                            c.execute("INSERT INTO users VALUES (?, ?, ?, 'student', ?)", (new_u.strip(), new_p.strip(), new_name.strip(), user["username"]))
+                            c.execute("INSERT INTO users (username, password, fullname, role, teacher_username) VALUES (%s, %s, %s, 'student', %s)", (new_u.strip(), new_p.strip(), new_name.strip(), user["username"]))
                             conn.commit()
                             st.success(f"Đã thêm học sinh **{new_name}** vào lớp!")
                             st.rerun()
                         except Exception:
+                            conn.rollback()
                             st.error("Tên đăng nhập này đã tồn tại!")
                     else:
                         st.warning("Vui lòng nhập đầy đủ thông tin.")
                         
         with col_remove:
             st.markdown("#### ❌ 3. Xoá học sinh khỏi lớp")
-            c.execute("SELECT username, fullname FROM users WHERE role = 'student' AND teacher_username = ?", (user["username"],))
+            c.execute("SELECT username, fullname FROM users WHERE role = 'student' AND teacher_username = %s", (user["username"],))
             students = c.fetchall()
             
             if students:
@@ -1177,8 +1122,8 @@ elif user["role"] == "teacher":
                 
                 confirm_del = st.checkbox("Xác nhận xoá toàn bộ dữ liệu của học sinh này")
                 if st.button("🗑️ Xoá vĩnh viễn học sinh", type="primary", disabled=not confirm_del):
-                    c.execute("DELETE FROM submissions WHERE username = ?", (student_user_to_delete,))
-                    c.execute("DELETE FROM users WHERE username = ?", (student_user_to_delete,))
+                    c.execute("DELETE FROM submissions WHERE username = %s", (student_user_to_delete,))
+                    c.execute("DELETE FROM users WHERE username = %s", (student_user_to_delete,))
                     conn.commit()
                     st.success(f"Đã xoá học sinh {target_student} và toàn bộ bài làm!")
                     st.rerun()
@@ -1187,7 +1132,7 @@ elif user["role"] == "teacher":
 
         st.markdown("---")
         st.markdown(f"#### 📋 Danh sách học sinh hiện tại của lớp ({user['fullname']}):")
-        c.execute("SELECT username as 'Tên đăng nhập', fullname as 'Họ và tên' FROM users WHERE role = 'student' AND teacher_username = ?", (user["username"],))
+        c.execute("SELECT username, fullname FROM users WHERE role = 'student' AND teacher_username = %s", (user["username"],))
         current_students = c.fetchall()
         if current_students:
             st.table([{"Mã đăng nhập": s[0], "Họ và tên học sinh": s[1]} for s in current_students])
@@ -1208,11 +1153,12 @@ elif user["role"] == "teacher":
                 if btn_t:
                     if new_t_user and new_t_pass and new_t_name:
                         try:
-                            c.execute("INSERT INTO users VALUES (?, ?, ?, 'teacher', NULL)", (new_t_user.strip(), new_t_pass.strip(), new_t_name.strip()))
+                            c.execute("INSERT INTO users (username, password, fullname, role, teacher_username) VALUES (%s, %s, %s, 'teacher', NULL)", (new_t_user.strip(), new_t_pass.strip(), new_t_name.strip()))
                             conn.commit()
                             st.success(f"🎉 Đã tạo thành công tài khoản cho Giáo viên: **{new_t_name}** (Username: `{new_t_user}`)!")
                             st.rerun()
                         except Exception:
+                            conn.rollback()
                             st.error("Tên đăng nhập này đã tồn tại, vui lòng chọn tên khác!")
                     else:
                         st.warning("Vui lòng nhập đầy đủ thông tin.")
@@ -1223,4 +1169,5 @@ elif user["role"] == "teacher":
             all_t = c.fetchall()
             st.table([{"Tên đăng nhập": t[0], "Họ và tên Giáo viên": t[1], "Quyền hạn": "Quản trị trưởng (Super Admin)" if t[0] in SUPER_ADMIN_USERS else "Giáo viên bộ môn"} for t in all_t])
         
+    c.close()
     conn.close()
