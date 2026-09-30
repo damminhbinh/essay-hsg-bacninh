@@ -1,6 +1,7 @@
 streamlit
 google-genai
 pillow
-python-docx
 pandas
 openpyxl
+python-docx
+psycopg2-binary
