@@ -590,8 +590,7 @@ if user["role"] == "student":
                                     model=target_model,
                                     contents=user_content,
                                     config=types.GenerateContentConfig(
-                                        system_instruction=SYSTEM_INSTRUCTION,
-                                        temperature=0.15
+                                        system_instruction=SYSTEM_INSTRUCTION                                        
                                     )
                                 )
                                 if response and response.text:
@@ -859,8 +858,7 @@ elif user["role"] == "teacher":
                                         model=target_model,
                                         contents=user_content_batch,
                                         config=types.GenerateContentConfig(
-                                            system_instruction=SYSTEM_INSTRUCTION,
-                                            temperature=0.15
+                                            system_instruction=SYSTEM_INSTRUCTION                                           
                                         )
                                     )
                                     if response and response.text:
