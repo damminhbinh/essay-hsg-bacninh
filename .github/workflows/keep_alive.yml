@@ -1,0 +1,35 @@
+name: Keep Supabase Alive
+
+on:
+  schedule:
+    # Tự động chạy lúc 00:00 UTC (07:00 sáng VN) vào Thứ 2, Thứ 4, Thứ 7 hàng tuần
+    - cron: '0 0 * * 1,3,6'
+  workflow_dispatch: # Cho phép bấm chạy thử thủ công ngay lập tức
+
+jobs:
+  ping-supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install database driver
+        run: pip install psycopg2-binary
+
+      - name: Execute keep-alive query
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python -c "
+          import os, psycopg2
+          db_url = os.environ.get('DATABASE_URL')
+          conn = psycopg2.connect(db_url, sslmode='require')
+          cur = conn.cursor()
+          cur.execute('SELECT 1;')
+          result = cur.fetchone()
+          print('Ping database thành công:', result)
+          cur.close()
+          conn.close()
+          "
