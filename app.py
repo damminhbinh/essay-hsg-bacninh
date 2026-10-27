@@ -246,7 +246,38 @@ OFFICIAL BAC NINH 2.0-POINT RUBRIC:
 2. Organization & Presentation (0.60 max): Organic 4-paragraph structure, tight line of reasoning, natural cohesive flow.
 3. Language (0.60 max): Accuracy, clarity, natural collocations, academic hedging. Penalize forced/hallucinated vocabulary.
 4. Mechanics (0.10 max): Punctuation, spelling, capitalisation, zero contractions.
-* PENALTY DEDUCTION (Trừ điểm phạt độ dài): Áp dụng sau khi cộng 4 tiêu chí trên.
+- PENALTY DEDUCTION (Trừ điểm phạt độ dài): Áp dụng sau khi cộng 4 tiêu chí trên.
+
+============================================================
+0. QUY TẮC BẮT BUỘC VỀ SỰ PHÙ HỢP CỦA CHỦ ĐỀ (OFF-TOPIC ZERO RULE):
+1. Kiểm tra độ phù hợp trước khi chấm (Gatekeeping Check):
+- Trước khi đánh giá ngữ pháp, từ vựng hay cấu trúc, bắt buộc phân tích mức độ liên quan giữa bài viết của học sinh và yêu cầu của đề bài (Task/Topic).
+- Nếu bài viết thuộc một trong các trường hợp sau:
+  + Lạc đề hoàn toàn (hoàn toàn không liên quan đến đề bài).
+  + Chép lại đề hoặc chép một đoạn văn bản mẫu học thuộc sẵn không ăn nhập gì với chủ đề.
+  + Trả lời một chủ đề khác hoàn toàn, không đáp ứng trọng tâm câu hỏi.
+
+2. Xử lý điểm:
+- ĐIỂM TỔNG: 0.00 / 2.00
+- Tất cả các tiêu chí thành phần (Content, Organization, Language, Mechanics): ĐỀU PHẢI ĐẶT BẰNG 0.00.
+- KHÔNG cho bất kỳ điểm khuyến khích nào cho ngữ pháp hay từ vựng nếu bài viết lạc đề.
+
+3. Nhận xét bắt buộc:
+- Tại mục Đánh giá tổng quan và Bảng điểm, phải nêu rõ lý do: "Bài viết lạc đề / không trả lời đúng yêu cầu của đề bài (Off-topic). Điểm đánh giá: 0."
+
+============================================================
+QUY CHUẨN CHUYÊN MÔN TẬP HUẤN (CHUYÊN BẮC NINH & THCS THÂN NHÂN TRUNG):
+1. Nhận diện & Phát triển ý (P-W-H-E-E):
+- Discussive Essay: Trọng tâm Examine + Evaluate + Judge. Tránh liệt kê cơ học hoặc thiếu phán đoán cuối cùng (no final judgement).
+- Argumentative Essay: Trọng tâm Claim + Support + Defend. Lập trường rõ ràng, nhất quán; phản biện tuân thủ 3 bước: Concede -> Qualify -> Rebut.
+- For & Against / Advantages-Disadvantages (Chuẩn THCS Thân Nhân Trung): Giữ cân bằng 2 mặt (Body 1: Advantages, Body 2: Disadvantages). Tuyệt đối tránh Opinion Drift (không tự ý chuyển thành Agree/Disagree hoặc ép quan điểm cá nhân một chiều nếu đề chỉ hỏi benefits/drawbacks).
+- Công thức đoạn P-W-H-E-E: Point (Claim) -> Why -> How (Cơ chế) -> Example (Ví dụ ngắn có chức năng, không thay thế cơ chế) -> Evaluation/Condition (Điều kiện/giới hạn). Tránh Idea dumping (2 ý sâu > 5 ý nông).
+- Nguyên tắc Ngôn ngữ: Precision > Complexity (Chính xác hơn phức tạp, tránh fake sophistication); Tránh tuyệt đối hóa (Overclaiming: always, never, completely); Tránh lạm dụng từ nối (Linker overload).
+
+2. Quy tắc bài viết mẫu 2 cấp độ:
+- Cấp độ 1 (Bản Nền tảng & Dễ tiếp thu): Ưu tiên vận dụng triệt để các bộ khung TEMPLATE chuẩn trong tài liệu tập huấn (Chuyên Bắc Ninh & THCS Thân Nhân Trung). Ngôn ngữ chính xác, tự nhiên, câu từ sáng rõ, dễ học thuộc khung sườn. Vận dụng linh hoạt Qualified Thesis (nhượng bộ ở mở bài) hoặc phản biện Concede-Qualify-Rebut khi đề bài yêu cầu chiều sâu.
+- Cấp độ 2 (Bản Nâng cao C1-C2): Vận dụng các biến thể nâng cao (Sophisticated template, dialectical synthesis), phản biện đa tầng sâu sắc, phân tích cơ chế và hệ quả lâu dài, từ vựng học thuật tự nhiên và tinh tế.
+- LƯU Ý ĐẶC BIỆT: Ngay cả khi bài thi của học sinh bị điểm 0 do vi phạm quy tắc Off-topic, VẪN BẮT BUỘC cung cấp đầy đủ 2 bài viết mẫu hoàn chỉnh và bảng từ vựng để học sinh học tập lại đề bài gốc.
 
 ============================================================
 REQUIRED OUTPUT FORMAT:
@@ -262,14 +293,14 @@ REQUIRED OUTPUT FORMAT:
 
 | Tiêu chí thành phần | Điểm tối đa | Điểm đạt | Nhận xét chi tiết của Giám khảo |
 | :--- | :---: | :---: | :--- |
-| **1. Content** (Ý tưởng & Lập luận) | 0.70 | **...** | Đánh giá độ sâu lập luận (2 luận điểm phát triển sâu); phạt nếu ý nông hoặc Task Drift. |
+| **1. Content** (Ý tưởng & Lập luận) | 0.70 | **...** | Đánh giá độ sâu lập luận (2 luận điểm phát triển sâu theo P-W-H-E-E); phạt nếu ý nông hoặc Task Drift. |
 | **2. Organization** (Bố cục & Mạch lạc) | 0.60 | **...** | Đánh giá tính nhất quán của quan điểm xuyên suốt và liên kết logic tự nhiên. |
 | **3. Language** (Từ vựng & Ngữ pháp) | 0.60 | **...** | Đánh giá độ chuẩn xác, tự nhiên; trừ điểm nếu sính "từ vựng khủng" nhưng gượng ép. |
 | **4. Mechanics** (Chính tả & Thể thức) | 0.10 | **...** | Trừ thẳng tay nếu có từ viết tắt (don't, isn't) hoặc sai chính tả. |
 | **5. Điểm phạt thiếu từ (Penalty)** | -0.50 | **...** | Trừ trực tiếp: [0.00 / -0.10 / -0.20 đến -0.50 tuỳ số từ thực tế]. |
 | **TỔNG ĐIỂM BÀI THI** | **2.00** | **... / 2.0** | **Ước lượng band IELTS tương đương: ...** |
 
-*(Ghi chú: Tổng điểm = (Content + Organization + Language + Mechanics) - Điểm phạt thiếu từ).*
+*(Ghi chú: Nếu vi phạm OFF-TOPIC ZERO RULE, tất cả điểm thành phần và tổng điểm ghi 0.00/2.0).*
 
 ### 3. 🔍 SOI LỖI CHI TIẾT (KÈM DỊCH NGHĨA TIẾNG VIỆT ĐỀ XUẤT)
 
@@ -287,7 +318,7 @@ REQUIRED OUTPUT FORMAT:
 ### 5. ✍️ BÀI VIẾT MẪU THAM KHẢO THEO 2 CẤP ĐỘ (CHUẨN ~250 TỪ)
 
 #### 🔹 Cấp độ 1: Bản Nền tảng & Dễ tiếp thu (Mức độ B1 đến B1+ - Mọi học sinh đều học và nhớ được)
-- **Đặc điểm:** Bố cục chuẩn mực, diễn đạt sáng rõ, ngữ pháp tuyệt đối chuẩn, từ vựng quen thuộc nhưng chính xác, 2 ý triển khai có chiều sâu rõ rệt.
+- **Đặc điểm:** Bố cục chuẩn mực, diễn đạt sáng rõ, ngữ pháp tuyệt đối chuẩn, từ vựng quen thuộc nhưng chính xác, 2 ý triển khai có chiều sâu rõ rệt (vận dụng triệt để khung template chuẩn từ tài liệu tập huấn).
 
 [Viết toàn bài essay mẫu hoàn chỉnh Cấp độ B1-B1+ chuẩn khoảng 250 từ tại đây]
 
@@ -331,7 +362,6 @@ REQUIRED OUTPUT FORMAT:
 ### 6. ⚠️ DANH SÁCH LỖI THEN CHỐT CẦN LƯU HỒ SƠ:
 (Ghi 1-3 lỗi cốt lõi ngắn gọn để ghi nhớ vào CSDL theo dõi cá nhân).
 """
-
 # Quản lý Đăng nhập
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
