@@ -14,6 +14,8 @@ from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.oxml import parse_xml
+from docx.oxml.ns import nsdecls
 
 # Hàm lấy thời gian chuẩn múi giờ Việt Nam GMT+7
 def get_vn_time_str(fmt="%d/%m/%Y %H:%M"):
@@ -30,48 +32,59 @@ DEFAULT_API_KEYS = []
 
 AUTHOR_INFO_MARKDOWN = """
 **Tác giả:**
-* **1. Đàm Thuận Minh Bình**  
+- **1. Đàm Thuận Minh Bình**  
   📞 0387.136.888
-* **2. Đỗ Thị Huyền**  
+- **2. Đỗ Thị Huyền**  
   📞 0982.036.952
 
 🏫 *Trường THCS Thân Nhân Trung - TP. Bắc Ninh*
 """
 
-# HÀM BÓC TÁCH ĐIỂM THỰC TẾ VÀ LỖI THỰC TẾ TỪ PHẢN HỒI CỦA GIÁM KHẢO AI
+# HÀM BÓC TÁCH ĐIỂM THỰC TẾ (BỔ SUNG ĐIỂM TRỪ PENALTY) VÀ LỖI TỪ PHẢN HỒI CỦA GIÁM KHẢO AI
 def parse_scores_from_feedback(text):
     s_content = 0.45
     s_org = 0.40
     s_lang = 0.40
     s_mech = 0.08
+    s_penalty = 0.00
     s_total = 1.33
     errors_str = "Chưa ghi nhận lỗi nghiêm trọng"
     
     if not text:
-        return s_content, s_org, s_lang, s_mech, s_total, errors_str
+        return s_content, s_org, s_lang, s_mech, s_penalty, s_total, errors_str
         
     try:
+        # Bóc tách Content (0.70)
         m_c = re.search(r'Content.*?(?:0\.70|0\.7)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
         if m_c:
             s_content = float(m_c.group(1))
         
+        # Bóc tách Organization (0.60)
         m_o = re.search(r'Organization.*?(?:0\.60|0\.6)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
         if m_o:
             s_org = float(m_o.group(1))
         
+        # Bóc tách Language (0.60)
         m_l = re.search(r'Language.*?(?:0\.60|0\.6)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
         if m_l:
             s_lang = float(m_l.group(1))
         
+        # Bóc tách Mechanics (0.10)
         m_m = re.search(r'Mechanics.*?(?:0\.10|0\.1)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
         if m_m:
             s_mech = float(m_m.group(1))
+            
+        # Bóc tách Điểm phạt thiếu từ (Penalty)
+        m_p = re.search(r'(?:Điểm phạt thiếu từ|Penalty).*?\|\s*[\*_`]*(-?[0-9.]+)', text, re.IGNORECASE)
+        if m_p:
+            s_penalty = float(m_p.group(1))
         
+        # Bóc tách Tổng điểm
         m_t = re.search(r'TỔNG ĐIỂM BÀI THI.*?(?:2\.00|2\.0)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
         if m_t:
             s_total = float(m_t.group(1))
         else:
-            s_total = round(max(0.0, s_content + s_org + s_lang + s_mech), 2)
+            s_total = round(max(0.0, s_content + s_org + s_lang + s_mech + s_penalty), 2)
             
         m_err = re.search(r'(?:6\.\s*⚠\s*DANH SÁCH LỖI THEN CHỐT CẦN LƯU HỒ SƠ|DANH SÁCH LỖI THEN CHỐT)[:\s*\n]+(.*?)(?:\n###|\Z)', text, re.DOTALL | re.IGNORECASE)
         if m_err:
@@ -84,7 +97,65 @@ def parse_scores_from_feedback(text):
     except Exception:
         pass
         
-    return s_content, s_org, s_lang, s_mech, s_total, errors_str
+    return s_content, s_org, s_lang, s_mech, s_penalty, s_total, errors_str
+
+# CÁC HÀM HỖ TRỢ ĐỊNH DẠNG BẢNG VÀ CHỮ CHO FILE WORD
+def set_table_styling(table):
+    tblPr = table._tbl.tblPr
+    borders = parse_xml(f'''
+        <w:tblBorders {nsdecls("w")}>
+            <w:top w:val="single" w:sz="6" w:space="0" w:color="B0C4DE"/>
+            <w:left w:val="single" w:sz="6" w:space="0" w:color="B0C4DE"/>
+            <w:bottom w:val="single" w:sz="6" w:space="0" w:color="B0C4DE"/>
+            <w:right w:val="single" w:sz="6" w:space="0" w:color="B0C4DE"/>
+            <w:insideH w:val="single" w:sz="4" w:space="0" w:color="D3D3D3"/>
+            <w:insideV w:val="single" w:sz="4" w:space="0" w:color="D3D3D3"/>
+        </w:tblBorders>
+    ''')
+    tblPr.append(borders)
+
+def set_cell_properties(cell, bg_hex=None, top=100, bottom=100, left=140, right=140):
+    tcPr = cell._tc.get_or_add_tcPr()
+    if bg_hex:
+        shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{bg_hex}"/>')
+        tcPr.append(shd)
+    tcMar = parse_xml(f'''
+        <w:tcMar {nsdecls("w")}>
+            <w:top w:w="{top}" w:type="dxa"/>
+            <w:bottom w:w="{bottom}" w:type="dxa"/>
+            <w:left w:w="{left}" w:type="dxa"/>
+            <w:right w:w="{right}" w:type="dxa"/>
+        </w:tcMar>
+    ''')
+    tcPr.append(tcMar)
+
+def add_formatted_runs_to_paragraph(p, text, font_size=11, default_bold=False):
+    lines = re.split(r'<br\s*/?>|\n', text)
+    first_line = True
+    for line in lines:
+        cleaned_line = line.strip()
+        if not cleaned_line:
+            continue
+        if not first_line:
+            p.add_run('\n')
+        first_line = False
+        
+        tokens = re.split(r'(\*\*.*?\*\*|\*.*?\*)', cleaned_line)
+        for token in tokens:
+            if not token:
+                continue
+            if token.startswith('**') and token.endswith('**') and len(token) >= 4:
+                r = p.add_run(token[2:-2])
+                r.bold = True
+            elif token.startswith('*') and token.endswith('*') and len(token) >= 2:
+                r = p.add_run(token[1:-1])
+                r.italic = True
+            else:
+                r = p.add_run(token)
+                if default_bold:
+                    r.bold = True
+            r.font.name = 'Times New Roman'
+            r.font.size = Pt(font_size)
 
 # HÀM TẠO FILE DOCX CHUẨN THỂ THỨC (TIMES NEW ROMAN, CỠ 13PT, LỀ TRÁI 3CM, CÒN LẠI 2CM)
 def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md, teacher_name="Cô Đỗ Thị Huyền"):
@@ -154,18 +225,31 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md,
                     cols_count = max(len(r) for r in parsed_rows)
                     t = doc.add_table(rows=len(parsed_rows), cols=cols_count)
                     t.alignment = WD_TABLE_ALIGNMENT.CENTER
+                    set_table_styling(t)
+                    
                     for r_idx, row in enumerate(parsed_rows):
+                        is_header = (r_idx == 0)
+                        row_bg = "0B3C5D" if is_header else ("F8FAFC" if r_idx % 2 == 1 else "FFFFFF")
+                        
                         for c_idx, val in enumerate(row):
                             if c_idx < cols_count:
                                 cell = t.cell(r_idx, c_idx)
-                                cell.text = val
-                                for p in cell.paragraphs:
-                                    p.paragraph_format.line_spacing = 1.15
-                                    for r in p.runs:
-                                        r.font.name = 'Times New Roman'
-                                        r.font.size = Pt(11)
-                                        if r_idx == 0:
-                                            r.bold = True
+                                set_cell_properties(cell, bg_hex=row_bg, top=100, bottom=100, left=140, right=140)
+                                p = cell.paragraphs[0]
+                                p.text = ""
+                                p.paragraph_format.line_spacing = 1.15
+                                p.paragraph_format.space_before = Pt(0)
+                                p.paragraph_format.space_after = Pt(0)
+                                
+                                if is_header:
+                                    r = p.add_run(val)
+                                    r.bold = True
+                                    r.font.name = 'Times New Roman'
+                                    r.font.size = Pt(11)
+                                    r.font.color.rgb = RGBColor(255, 255, 255)
+                                else:
+                                    add_formatted_runs_to_paragraph(p, val, font_size=11)
+                                    
                 in_table = False
                 table_lines = []
                 
@@ -174,30 +258,26 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md,
                 
             p = doc.add_paragraph()
             p.paragraph_format.line_spacing = 1.25
+            p.paragraph_format.space_before = Pt(2)
+            p.paragraph_format.space_after = Pt(3)
+            
             clean_line = stripped
-            is_bold = False
+            is_heading_bold = False
+            heading_size = 13
             
             if clean_line.startswith('### '):
                 clean_line = clean_line[4:]
-                is_bold = True
+                is_heading_bold = True
+                heading_size = 13.5
             elif clean_line.startswith('#### '):
                 clean_line = clean_line[5:]
-                is_bold = True
+                is_heading_bold = True
+                heading_size = 12.5
             elif clean_line.startswith('#'):
                 clean_line = clean_line.lstrip('#').strip()
-                is_bold = True
+                is_heading_bold = True
                 
-            parts = re.split(r'(\*\*.*?\*\*)', clean_line)
-            for part in parts:
-                if part.startswith('**') and part.endswith('**'):
-                    run = p.add_run(part[2:-2])
-                    run.bold = True
-                else:
-                    run = p.add_run(part)
-                    if is_bold:
-                        run.bold = True
-                run.font.name = 'Times New Roman'
-                run.font.size = Pt(13)
+            add_formatted_runs_to_paragraph(p, clean_line, font_size=heading_size, default_bold=is_heading_bold)
 
     p_sig = doc.add_paragraph()
     p_sig.paragraph_format.space_before = Pt(24)
@@ -234,7 +314,15 @@ def get_db_connection():
     if not db_url:
         st.error("Chưa cấu hình biến DATABASE_URL trong Streamlit Secrets! Vui lòng cấu hình để tiếp tục.")
         st.stop()
-    return psycopg2.connect(db_url)
+    conn = psycopg2.connect(db_url)
+    try:
+        cur = conn.cursor()
+        cur.execute("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS score_penalty NUMERIC(4,2) DEFAULT 0.00;")
+        conn.commit()
+        cur.close()
+    except Exception:
+        conn.rollback()
+    return conn
 
 SUPER_ADMIN_USERS = ["giaovien", "gv_binh"]
 
@@ -243,7 +331,7 @@ SYSTEM_INSTRUCTION = """
 ============================================================
 OFFICIAL BAC NINH 2.0-POINT RUBRIC:
 1. Content (0.70 max): Strict alignment with statement nuances, fully developed mechanisms, no task drift.
-2. Organization & Presentation (0.60 max): Organic 4-paragraph structure, tight line of reasoning, natural cohesive flow.
+​2. Organization & Presentation (0.60 max): Organic 4-paragraph structure, tight line of reasoning, natural cohesive flow.
 3. Language (0.60 max): Accuracy, clarity, natural collocations, academic hedging. Penalize forced/hallucinated vocabulary.
 4. Mechanics (0.10 max): Punctuation, spelling, capitalisation, zero contractions.
 - PENALTY DEDUCTION (Trừ điểm phạt độ dài): Áp dụng sau khi cộng 4 tiêu chí trên.
@@ -310,7 +398,7 @@ REQUIRED OUTPUT FORMAT:
 
 ### 4. 💎 NÂNG CẤP TỪ VỰNG & DIỄN ĐẠT THEN CHỐT (KÈM PHIÊN ÂM & NGHĨA)
 1. **[Cụm từ tiếng Anh]** /phiên âm IPA/: Dịch nghĩa tiếng Việt và cách dùng trong chủ đề này.
-2. **[Cụm từ tiếng Anh]** /phiên âm IPA/: Dịch nghĩa tiếng Việt và cách dùng trong chủ đề này.
+​2. **[Cụm từ tiếng Anh]** /phiên âm IPA/: Dịch nghĩa tiếng Việt và cách dùng trong chủ đề này.
 3. **[Cụm từ tiếng Anh]** /phiên âm IPA/: Dịch nghĩa tiếng Việt và cách dùng trong chủ đề này.
 4. **[Cụm từ tiếng Anh]** /phiên âm IPA/: Dịch nghĩa tiếng Việt và cách dùng trong chủ đề này.
 5. **[Cụm từ tiếng Anh]** /phiên âm IPA/: Dịch nghĩa tiếng Việt và cách dùng trong chủ đề này.
@@ -362,6 +450,7 @@ REQUIRED OUTPUT FORMAT:
 ### 6. ⚠️ DANH SÁCH LỖI THEN CHỐT CẦN LƯU HỒ SƠ:
 (Ghi 1-3 lỗi cốt lõi ngắn gọn để ghi nhớ vào CSDL theo dõi cá nhân).
 """
+
 # Quản lý Đăng nhập
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -615,14 +704,14 @@ if user["role"] == "student":
                             "date_str": now_str
                         }
                         
-                        s_c, s_o, s_l, s_m, s_tot, s_err = parse_scores_from_feedback(result_text)
+                        s_c, s_o, s_l, s_m, s_p, s_tot, s_err = parse_scores_from_feedback(result_text)
                         
                         conn = get_db_connection()
                         c = conn.cursor()
                         c.execute('''
-                            INSERT INTO submissions (username, topic, essay_text, score_total, score_content, score_org, score_lang, score_mech, feedback, identified_errors, created_at)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ''', (user["username"], essay_prompt, essay_text, s_tot, s_c, s_o, s_l, s_m, result_text, s_err, now_str))
+                            INSERT INTO submissions (username, topic, essay_text, score_total, score_content, score_org, score_lang, score_mech, score_penalty, feedback, identified_errors, created_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ''', (user["username"], essay_prompt, essay_text, s_tot, s_c, s_o, s_l, s_m, s_p, result_text, s_err, now_str))
                         conn.commit()
                         c.close()
                         conn.close()
@@ -736,13 +825,13 @@ elif user["role"] == "teacher":
             if chosen_topic == "-- Tất cả các đề bài --":
                 if is_super_admin:
                     c.execute('''
-                        SELECT s.id, COALESCE(u.fullname, s.username), s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
+                        SELECT s.id, COALESCE(u.fullname, s.username), s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, COALESCE(s.score_penalty, 0.00), s.score_total, s.identified_errors, s.created_at
                         FROM submissions s LEFT JOIN users u ON s.username = u.username
                         ORDER BY s.id DESC
                     ''')
                 else:
                     c.execute('''
-                        SELECT s.id, u.fullname, s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
+                        SELECT s.id, u.fullname, s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, COALESCE(s.score_penalty, 0.00), s.score_total, s.identified_errors, s.created_at
                         FROM submissions s JOIN users u ON s.username = u.username
                         WHERE u.teacher_username = %s
                         ORDER BY s.id DESC
@@ -750,14 +839,14 @@ elif user["role"] == "teacher":
             else:
                 if is_super_admin:
                     c.execute('''
-                        SELECT s.id, COALESCE(u.fullname, s.username), s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
+                        SELECT s.id, COALESCE(u.fullname, s.username), s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, COALESCE(s.score_penalty, 0.00), s.score_total, s.identified_errors, s.created_at
                         FROM submissions s LEFT JOIN users u ON s.username = u.username
                         WHERE s.topic = %s
                         ORDER BY s.id DESC
                     ''', (chosen_topic,))
                 else:
                     c.execute('''
-                        SELECT s.id, u.fullname, s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
+                        SELECT s.id, u.fullname, s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, COALESCE(s.score_penalty, 0.00), s.score_total, s.identified_errors, s.created_at
                         FROM submissions s JOIN users u ON s.username = u.username
                         WHERE s.topic = %s AND u.teacher_username = %s
                         ORDER BY s.id DESC
@@ -767,7 +856,7 @@ elif user["role"] == "teacher":
             df_export = pd.DataFrame(subs, columns=[
                 "Mã bài", "Họ và tên học sinh", "Đề bài", 
                 "Content (0.7)", "Org (0.6)", "Lang (0.6)", "Mech (0.1)", 
-                "Tổng điểm (2.0)", "Lỗi trọng tâm cần sửa", "Thời gian nộp"
+                "Điểm trừ (Penalty)", "Tổng điểm (2.0)", "Lỗi trọng tâm cần sửa", "Thời gian nộp"
             ])
             
             st.write(f"Số bài nộp: **{len(subs)} bài**")
@@ -861,7 +950,7 @@ elif user["role"] == "teacher":
                                         model=target_model,
                                         contents=user_content_batch,
                                         config=types.GenerateContentConfig(
-                                            system_instruction=SYSTEM_INSTRUCTION                                           
+                                            system_instruction=SYSTEM_INSTRUCTION                                            
                                         )
                                     )
                                     if response and response.text:
@@ -890,13 +979,13 @@ elif user["role"] == "teacher":
                                 except Exception:
                                     conn.rollback()
 
-                            sc, so, sl, sm, stot, s_err = parse_scores_from_feedback(batch_graded_text)
+                            sc, so, sl, sm, sp, stot, s_err = parse_scores_from_feedback(batch_graded_text)
                             now_vn = get_vn_time_str("%d/%m/%Y %H:%M")
 
                             c.execute('''
-                                INSERT INTO submissions (username, topic, essay_text, score_total, score_content, score_org, score_lang, score_mech, feedback, identified_errors, created_at)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                            ''', (matched_username, batch_essay_prompt, f"(Bài chấm giấy từ file {uploaded_file.name})", stot, sc, so, sl, sm, batch_graded_text, s_err, now_vn))
+                                INSERT INTO submissions (username, topic, essay_text, score_total, score_content, score_org, score_lang, score_mech, score_penalty, feedback, identified_errors, created_at)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ''', (matched_username, batch_essay_prompt, f"(Bài chấm giấy từ file {uploaded_file.name})", stot, sc, so, sl, sm, sp, batch_graded_text, s_err, now_vn))
                             conn.commit()
 
                             success_count += 1
@@ -954,7 +1043,7 @@ elif user["role"] == "teacher":
                         WHERE s.topic = %s AND u.teacher_username = %s
                         ORDER BY s.id DESC
                     ''', (selected_topic_filter, user["username"]))
-                
+            
             subs_of_topic = c.fetchall()
             
             if subs_of_topic:
@@ -1143,7 +1232,7 @@ elif user["role"] == "teacher":
                 {
                     "STT": idx + 1, 
                     "Mã đăng nhập": s[0], 
-                    "Họ và tên học sinh": s[1],
+                    "Họ và tên học sinh": s[1], 
                     "Mật khẩu hiện tại": s[2]
                 } 
                 for idx, s in enumerate(current_students)
