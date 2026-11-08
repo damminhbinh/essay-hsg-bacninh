@@ -40,56 +40,59 @@ AUTHOR_INFO_MARKDOWN = """
 🏫 *Trường THCS Thân Nhân Trung - TP. Bắc Ninh*
 """
 
-# HÀM BÓC TÁCH ĐIỂM THỰC TẾ (BỔ SUNG ĐIỂM TRỪ PENALTY) VÀ LỖI TỪ PHẢN HỒI CỦA GIÁM KHẢO AI
+# HÀM BÓC TÁCH ĐIỂM THỰC TẾ THEO 8 TIÊU CHÍ CHI TIẾT & LỖI TỪ PHẢN HỒI CỦA GIÁM KHẢO AI
 def parse_scores_from_feedback(text):
-    s_content = 0.45
-    s_org = 0.40
-    s_lang = 0.40
-    s_mech = 0.08
-    s_penalty = 0.00
-    s_total = 1.33
+    s_content = 0.0
+    s_org = 0.0
+    s_lang = 0.0
+    s_mech = 0.0
+    s_total = 0.0
     errors_str = "Chưa ghi nhận lỗi nghiêm trọng"
     
     if not text:
-        return s_content, s_org, s_lang, s_mech, s_penalty, s_total, errors_str
+        return s_content, s_org, s_lang, s_mech, s_total, errors_str
         
     try:
-        # Bóc tách Content (0.70)
-        m_c = re.search(r'Content.*?(?:0\.70|0\.7)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
-        if m_c:
-            s_content = float(m_c.group(1))
-        
-        # Bóc tách Organization (0.60)
-        m_o = re.search(r'Organization.*?(?:0\.60|0\.6)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
-        if m_o:
-            s_org = float(m_o.group(1))
-        
-        # Bóc tách Language (0.60)
-        m_l = re.search(r'Language.*?(?:0\.60|0\.6)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
-        if m_l:
-            s_lang = float(m_l.group(1))
-        
-        # Bóc tách Mechanics (0.10)
-        m_m = re.search(r'Mechanics.*?(?:0\.10|0\.1)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
-        if m_m:
-            s_mech = float(m_m.group(1))
-            
-        # Bóc tách Điểm phạt thiếu từ (Penalty)
-        m_p = re.search(r'(?:Điểm phạt thiếu từ|Penalty).*?\|\s*[\*_`]*(-?[0-9.]+)', text, re.IGNORECASE)
-        if m_p:
-            s_penalty = float(m_p.group(1))
-        
-        # Bóc tách Tổng điểm
-        m_t = re.search(r'TỔNG ĐIỂM BÀI THI.*?(?:2\.00|2\.0)\s*\|\s*[\*_`]*([0-9.]+)', text, re.IGNORECASE)
+        def extract_val(pattern):
+            m = re.search(pattern, text, re.IGNORECASE)
+            return float(m.group(1)) if m else 0.0
+
+        # 1. Content (0.70 = 1a + 1b)
+        s_1a = extract_val(r'1a\.\s*Main Ideas\s*&\s*Details:\s*[\*_`]*([0-9.]+)')
+        s_1b = extract_val(r'1b\.\s*Communicating Intentions:\s*[\*_`]*([0-9.]+)')
+        s_content = round(s_1a + s_1b, 3)
+
+        # 2. Organization (0.60 = 2a + 2b)
+        s_2a = extract_val(r'2a\.\s*Cohesion\s*&\s*Coherence:\s*[\*_`]*([0-9.]+)')
+        s_2b = extract_val(r'2b\.\s*Structural Composition:\s*[\*_`]*([0-9.]+)')
+        s_org = round(s_2a + s_2b, 3)
+
+        # 3. Language (0.60 = 3a + 3b)
+        s_3a = extract_val(r'3a\.\s*Vocabulary Range:\s*[\*_`]*([0-9.]+)')
+        s_3b = extract_val(r'3b\.\s*Grammatical Control:\s*[\*_`]*([0-9.]+)')
+        s_lang = round(s_3a + s_3b, 3)
+
+        # 4. Punctuation, Spelling & Word Count (0.10 = 4a + 4b)
+        s_4a = extract_val(r'4a\.\s*Spelling\s*&\s*Punctuation:\s*[\*_`]*([0-9.]+)')
+        s_4b = extract_val(r'4b\.\s*Word Count\s*&\s*Presentation:\s*[\*_`]*([0-9.]+)')
+        s_mech = round(s_4a + s_4b, 3)
+
+        # Tổng điểm (ưu tiên lấy từ TOTAL SCORE, nếu không có thì cộng 4 nhóm)
+        m_t = re.search(r'TOTAL SCORE:\s*[\*_`]*([0-9.]+)\s*/\s*2\.0', text, re.IGNORECASE)
         if m_t:
-            s_total = float(m_t.group(1))
+            s_total = round(float(m_t.group(1)), 2)
         else:
-            s_total = round(max(0.0, s_content + s_org + s_lang + s_mech + s_penalty), 2)
-            
-        m_err = re.search(r'(?:6\.\s*⚠\s*DANH SÁCH LỖI THEN CHỐT CẦN LƯU HỒ SƠ|DANH SÁCH LỖI THEN CHỐT)[:\s*\n]+(.*?)(?:\n###|\Z)', text, re.DOTALL | re.IGNORECASE)
+            s_total = round(s_content + s_org + s_lang + s_mech, 2)
+
+        # Bóc tách lỗi then chốt từ bảng Actionable Corrections
+        m_err = re.search(r'4\.\s*\*{0,2}Actionable Corrections\*{0,2}[:\s*\n]+(.*?)(?:\n###|\n5\.|\Z)', text, re.DOTALL | re.IGNORECASE)
         if m_err:
             raw_err = m_err.group(1).strip()
-            cleaned_lines = [re.sub(r'^[\s*\-0-9.)]+', '', line).strip() for line in raw_err.split('\n') if line.strip()]
+            cleaned_lines = [
+                re.sub(r'^[\s*\-0-9.)|]+', '', line).strip()
+                for line in raw_err.split('\n')
+                if line.strip() and not line.strip().startswith('|---') and not line.strip().lower().startswith('| lỗi gốc')
+            ]
             if cleaned_lines:
                 errors_str = " | ".join(cleaned_lines[:3])
                 if len(errors_str) > 120:
@@ -97,7 +100,7 @@ def parse_scores_from_feedback(text):
     except Exception:
         pass
         
-    return s_content, s_org, s_lang, s_mech, s_penalty, s_total, errors_str
+    return s_content, s_org, s_lang, s_mech, s_total, errors_str
 
 # CÁC HÀM HỖ TRỢ ĐỊNH DẠNG BẢNG VÀ CHỮ CHO FILE WORD
 def set_table_styling(table):
@@ -314,141 +317,120 @@ def get_db_connection():
     if not db_url:
         st.error("Chưa cấu hình biến DATABASE_URL trong Streamlit Secrets! Vui lòng cấu hình để tiếp tục.")
         st.stop()
-    conn = psycopg2.connect(db_url)
-    try:
-        cur = conn.cursor()
-        cur.execute("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS score_penalty NUMERIC(4,2) DEFAULT 0.00;")
-        conn.commit()
-        cur.close()
-    except Exception:
-        conn.rollback()
-    return conn
+    return psycopg2.connect(db_url)
 
 SUPER_ADMIN_USERS = ["giaovien", "gv_binh"]
 
-# 3. Huấn luyện System Instruction chuẩn Barem 2.0 Bắc Ninh
+# 3. Huấn luyện System Instruction chuẩn Barem 2.0 Bắc Ninh & Template Argumentative Essay
 SYSTEM_INSTRUCTION = """
 ============================================================
-OFFICIAL BAC NINH 2.0-POINT RUBRIC:
-1. Content (0.70 max): Strict alignment with statement nuances, fully developed mechanisms, no task drift.
-​2. Organization & Presentation (0.60 max): Organic 4-paragraph structure, tight line of reasoning, natural cohesive flow.
-3. Language (0.60 max): Accuracy, clarity, natural collocations, academic hedging. Penalize forced/hallucinated vocabulary.
-4. Mechanics (0.10 max): Punctuation, spelling, capitalisation, zero contractions.
-- PENALTY DEDUCTION (Trừ điểm phạt độ dài): Áp dụng sau khi cộng 4 tiêu chí trên.
-
-============================================================
 0. QUY TẮC BẮT BUỘC VỀ SỰ PHÙ HỢP CỦA CHỦ ĐỀ (OFF-TOPIC ZERO RULE):
-1. Kiểm tra độ phù hợp trước khi chấm (Gatekeeping Check):
-- Trước khi đánh giá ngữ pháp, từ vựng hay cấu trúc, bắt buộc phân tích mức độ liên quan giữa bài viết của học sinh và yêu cầu của đề bài (Task/Topic).
-- Nếu bài viết thuộc một trong các trường hợp sau:
-  + Lạc đề hoàn toàn (hoàn toàn không liên quan đến đề bài).
-  + Chép lại đề hoặc chép một đoạn văn bản mẫu học thuộc sẵn không ăn nhập gì với chủ đề.
-  + Trả lời một chủ đề khác hoàn toàn, không đáp ứng trọng tâm câu hỏi.
-
-2. Xử lý điểm:
-- ĐIỂM TỔNG: 0.00 / 2.00
-- Tất cả các tiêu chí thành phần (Content, Organization, Language, Mechanics): ĐỀU PHẢI ĐẶT BẰNG 0.00.
-- KHÔNG cho bất kỳ điểm khuyến khích nào cho ngữ pháp hay từ vựng nếu bài viết lạc đề.
-
-3. Nhận xét bắt buộc:
-- Tại mục Đánh giá tổng quan và Bảng điểm, phải nêu rõ lý do: "Bài viết lạc đề / không trả lời đúng yêu cầu của đề bài (Off-topic). Điểm đánh giá: 0."
+- Trước khi chấm, kiểm tra mức độ liên quan giữa bài viết của học sinh và yêu cầu của đề bài.
+- Nếu bài viết lạc đề hoàn toàn, chép lại đề/văn mẫu không ăn nhập, hoặc trả lời sai chủ đề trọng tâm:
+  + Đặt TẤT CẢ 8 tiêu chí thành phần và TOTAL SCORE = 0.0 / 2.0.
+  + Nêu rõ lý do: "Bài viết lạc đề / không trả lời đúng yêu cầu của đề bài (Off-topic). Điểm đánh giá: 0."
 
 ============================================================
-QUY CHUẨN CHUYÊN MÔN TẬP HUẤN (CHUYÊN BẮC NINH & THCS THÂN NHÂN TRUNG):
-1. Nhận diện & Phát triển ý (P-W-H-E-E):
-- Discussive Essay: Trọng tâm Examine + Evaluate + Judge. Tránh liệt kê cơ học hoặc thiếu phán đoán cuối cùng (no final judgement).
-- Argumentative Essay: Trọng tâm Claim + Support + Defend. Lập trường rõ ràng, nhất quán; phản biện tuân thủ 3 bước: Concede -> Qualify -> Rebut.
-- For & Against / Advantages-Disadvantages (Chuẩn THCS Thân Nhân Trung): Giữ cân bằng 2 mặt (Body 1: Advantages, Body 2: Disadvantages). Tuyệt đối tránh Opinion Drift (không tự ý chuyển thành Agree/Disagree hoặc ép quan điểm cá nhân một chiều nếu đề chỉ hỏi benefits/drawbacks).
-- Công thức đoạn P-W-H-E-E: Point (Claim) -> Why -> How (Cơ chế) -> Example (Ví dụ ngắn có chức năng, không thay thế cơ chế) -> Evaluation/Condition (Điều kiện/giới hạn). Tránh Idea dumping (2 ý sâu > 5 ý nông).
-- Nguyên tắc Ngôn ngữ: Precision > Complexity (Chính xác hơn phức tạp, tránh fake sophistication); Tránh tuyệt đối hóa (Overclaiming: always, never, completely); Tránh lạm dụng từ nối (Linker overload).
+# BAREM CHẤM ĐIỂM CHI TIẾT (RUBRIC)
 
-2. Quy tắc bài viết mẫu 2 cấp độ:
-- Cấp độ 1 (Bản Nền tảng & Dễ tiếp thu): Ưu tiên vận dụng triệt để các bộ khung TEMPLATE chuẩn trong tài liệu tập huấn (Chuyên Bắc Ninh & THCS Thân Nhân Trung). Ngôn ngữ chính xác, tự nhiên, câu từ sáng rõ, dễ học thuộc khung sườn. Vận dụng linh hoạt Qualified Thesis (nhượng bộ ở mở bài) hoặc phản biện Concede-Qualify-Rebut khi đề bài yêu cầu chiều sâu.
-- Cấp độ 2 (Bản Nâng cao C1-C2): Vận dụng các biến thể nâng cao (Sophisticated template, dialectical synthesis), phản biện đa tầng sâu sắc, phân tích cơ chế và hệ quả lâu dài, từ vựng học thuật tự nhiên và tinh tế.
-- LƯU Ý ĐẶC BIỆT: Ngay cả khi bài thi của học sinh bị điểm 0 do vi phạm quy tắc Off-topic, VẪN BẮT BUỘC cung cấp đầy đủ 2 bài viết mẫu hoàn chỉnh và bảng từ vựng để học sinh học tập lại đề bài gốc.
+### 1. Content (0.7 điểm) - 35%
+- **a. Main ideas and details (0.35 điểm):**
+  - Đưa ra quan điểm rõ ràng (Agree / Disagree / Partial agreement) ngay từ mở bài.
+  - Có ít nhất 2 luận điểm chính được phát triển mạch lạc với ví dụ, giải thích hoặc dẫn chứng cụ thể.
+  - Phạt nếu lạc đề, luận điểm mơ hồ hoặc chỉ liệt kê mà không đào sâu:
+    - Đầy đủ, sâu sắc: 0.30 - 0.35 điểm.
+    - Đủ ý nhưng phát triển còn mỏng: 0.20 - 0.25 điểm.
+    - Thiếu ý hoặc mất cân đối nghiêm trọng: 0.10 - 0.15 điểm.
+    - Lạc đề: 0.0 điểm.
+- **b. Communicating intentions (0.35 điểm):**
+  - Thể hiện lập trường xuyên suốt từ đầu đến kết luận mà không tự mâu thuẫn.
+  - Lập luận có tính thuyết phục cao, phân tích được cả tính 2 mặt nếu chọn thế trung lập:
+    - Thuyết phục, nhất quán cao: 0.30 - 0.35 điểm.
+    - Ý định rõ nhưng đôi chỗ lập luận lỏng lẻo: 0.20 - 0.25 điểm.
+    - Không rõ lập trường hoặc tự mâu thuẫn: 0.05 - 0.15 điểm.
+
+### 2. Organization & Presentation (0.6 điểm) - 30%
+- **a. Coherence, cohesion & clarity (0.30 điểm):**
+  - Mạch lập luận tự nhiên, chuyển đoạn và chuyển ý mượt mà.
+  - Sử dụng từ nối/liên kết câu (cohesive devices) linh hoạt, tránh lạm dụng máy móc (Firstly, Secondly, Last but not least).
+    - Tự nhiên, chuyển ý tinh tế: 0.25 - 0.30 điểm.
+    - Đạt mức cơ bản, đôi chỗ lạm dụng hoặc gượng gạo: 0.15 - 0.20 điểm.
+    - Rời rạc, thiếu liên kết: 0.0 - 0.10 điểm.
+- **b. Well-structured composition (0.30 điểm):**
+  - Cấu trúc chuẩn 4 hoặc 5 đoạn: Introduction (Hook + Thesis statement), 2-3 Body paragraphs (Topic sentence + Supporting sentences), Conclusion (Restatement + Final thought).
+    - Cấu trúc chuẩn mực, phân đoạn chuẩn: 0.25 - 0.30 điểm.
+    - Có đủ mở - thân - kết nhưng chia đoạn chưa tối ưu: 0.15 - 0.20 điểm.
+    - Không phân đoạn hoặc chỉ có 1 đoạn thân bài cồng kềnh: 0.0 - 0.10 điểm.
+
+### 3. Language (0.6 điểm) - 30% (Tiêu chuẩn HSG Chuyên Anh THCS - B2 to C1)
+- **a. Vocabulary & Complex structures (0.30 điểm):**
+  - Đòi hỏi từ vựng nâng cao đúng ngữ cảnh (academic collocations, topic-specific vocabulary: cognitive offloading, critical thinking, personalized learning, plagiarism...).
+  - Đa dạng cấu trúc: câu phức, mệnh đề quan hệ rút gọn, đảo ngữ, câu điều kiện, bị động nâng cao.
+    - Vốn từ phong phú, cấu trúc đa dạng và tự nhiên: 0.25 - 0.30 điểm.
+    - Dùng từ đúng nhưng còn đơn giản (A2-B1), ít biến hóa cấu trúc: 0.15 - 0.20 điểm.
+    - Cố gượng ép từ vựng (chêm từ đao to búa lớn sai ngữ cảnh): 0.10 - 0.15 điểm.
+- **b. Grammatical control (0.30 điểm):**
+  - Kiểm soát tốt sự hòa hợp chủ-vị, thì của động từ, mạo từ, giới từ.
+    - Không hoặc chỉ có 1-2 lỗi nhỏ không ảnh hưởng nghĩa (slips): 0.25 - 0.30 điểm.
+    - Xuất hiện một số lỗi ngữ pháp nhưng người đọc vẫn hiểu: 0.15 - 0.20 điểm.
+    - Lỗi ngữ pháp dày đặc gây cản trở đọc hiểu: 0.0 - 0.10 điểm.
+
+### 4. Punctuation, Spelling and Word Count (0.1 điểm) - 5%
+- **a. Punctuation & Spelling (0.05 điểm):**
+  - Đúng chính tả và chấm câu (dấu phẩy sau trạng ngữ, dấu chấm, viết hoa đầu câu):
+    - Không mắc lỗi: 0.05 điểm.
+    - Có 2-3 lỗi: 0.025 điểm.
+    - Trên 3 lỗi: 0.0 điểm.
+- **b. Formatting / Handwriting (0.05 điểm):**
+  - Quy ước khi chấm văn bản số/text: Tiêu chí này được quy đổi sang "Trình bày chuẩn mực & Độ dài hợp lệ":
+    - Độ dài đạt từ 220 - 280 từ (dung sai ±10% cho mức 250 từ) và trình bày văn bản chuẩn: 0.05 điểm.
+    - Quá ngắn (<200 từ) hoặc quá dài (>320 từ): 0.025 điểm.
+    - Dưới 150 từ: 0.0 điểm.
 
 ============================================================
-REQUIRED OUTPUT FORMAT:
+# QUY TẮC PHẠT VÀ TÍNH ĐIỂM
+1. **Làm tròn điểm:** Tổng điểm làm tròn đến 2 chữ số thập phân (bước nhảy 0.05 hoặc 0.025).
+2. **Khách quan:** Chỉ chấm những gì có trên bài viết, không tự suy diễn ý định mà học sinh chưa diễn đạt thành lời.
+3. **Phân tích lỗi cụ thể:** Trích dẫn chính xác lỗi sai (Word/Sentence quote) kèm theo đề xuất sửa đổi.
 
-### 1. 📋 ĐÁNH GIÁ TỔNG QUAN & PHÂN TÍCH NHẬN ĐỊNH CỦA ĐỀ
-- **Thể loại bài viết nhận diện:** [Opinion / Discussion / Cause-Solution / Advantages-Disadvantages / Two-Part Question]
-- **Kiểm định Phản hồi Nhận định mạnh (Evaluating the Prompt's Statement):** [Đánh giá thí sinh có phản biện được tính tuyệt đối/mức độ đúng của nhận định hay chỉ liệt kê ưu/nhược điểm chung chung].
-- **Số lượng từ bài làm:** [Số từ] từ (Chuẩn: ~250 từ).
-- **Mức phạt độ dài (nếu có):** [Không bị phạt / Trừ ... điểm vì thiếu ... từ theo quy chế].
-- **Soi xét Lịch sử cá nhân hóa:** [Nhận xét học sinh có tái phạm các lỗi cũ hay đã có tiến bộ cụ thể nào].
+============================================================
+# QUY CHUẨN GỢI Ý VIẾT LẠI CHO DẠNG "TO WHAT EXTENT DO YOU AGREE OR DISAGREE?" (ARGUMENTATIVE ESSAY)
+Khi đề bài thuộc dạng "To what extent do you agree or disagree?", phần gợi ý viết lại BẮT BUỘC phải tuân thủ cấu trúc 4 đoạn và sử dụng linh hoạt bộ khung Template chuẩn sau:
+- **Paragraph 1 - Introduction:**
+  + Template Standard: "The issue of whether [statement] remains highly controversial. While there are legitimate arguments on both sides, I would argue that [clear position], primarily because [reason 1] and [reason 2]."
+  + Hoặc Template Qualified Thesis: "Although [concession], I contend that [position]. This is because [reason 1], while [reason 2] further strengthens the case for this position."
+- **Paragraph 2 - Body 1 (Main Argument):**
+  + Template: "One of the strongest arguments in favour of [position] is that [claim]. This is because [reason]. In practical terms, [mechanism/development]. For instance, [example]. The implication is that [consequence]."
+- **Paragraph 3 - Body 2 (Counterargument & Rebuttal theo mô hình Concede -> Qualify -> Rebut):**
+  + Template Standard: "Admittedly, opponents may argue that [counterargument]. This concern is understandable because [reason]. However, it overlooks the fact that [rebuttal]."
+  + Hoặc Template Advanced: "It could reasonably be argued that [counterargument]. While this may hold true in [specific circumstances], it becomes less convincing when [different circumstance], particularly because [rebuttal]."
+- **Paragraph 4 - Conclusion:**
+  + Template: "In conclusion, although [counterargument], the arguments in favour of [position] are more compelling because [reason 1] and [reason 2]. Therefore, [final judgement]."
 
-### 2. 📊 BẢNG ĐIỂM CHÍNH THỨC SỞ GD&ĐT BẮC NINH (THANG 2.0)
+============================================================
+# ĐỊNH DẠNG ĐẦU RA (OUTPUT MARKDOWN)
 
-| Tiêu chí thành phần | Điểm tối đa | Điểm đạt | Nhận xét chi tiết của Giám khảo |
-| :--- | :---: | :---: | :--- |
-| **1. Content** (Ý tưởng & Lập luận) | 0.70 | **...** | Đánh giá độ sâu lập luận (2 luận điểm phát triển sâu theo P-W-H-E-E); phạt nếu ý nông hoặc Task Drift. |
-| **2. Organization** (Bố cục & Mạch lạc) | 0.60 | **...** | Đánh giá tính nhất quán của quan điểm xuyên suốt và liên kết logic tự nhiên. |
-| **3. Language** (Từ vựng & Ngữ pháp) | 0.60 | **...** | Đánh giá độ chuẩn xác, tự nhiên; trừ điểm nếu sính "từ vựng khủng" nhưng gượng ép. |
-| **4. Mechanics** (Chính tả & Thể thức) | 0.10 | **...** | Trừ thẳng tay nếu có từ viết tắt (don't, isn't) hoặc sai chính tả. |
-| **5. Điểm phạt thiếu từ (Penalty)** | -0.50 | **...** | Trừ trực tiếp: [0.00 / -0.10 / -0.20 đến -0.50 tuỳ số từ thực tế]. |
-| **TỔNG ĐIỂM BÀI THI** | **2.00** | **... / 2.0** | **Ước lượng band IELTS tương đương: ...** |
+Trả về kết quả theo đúng cấu trúc sau:
+1. **Word Count Check:** [Số từ thực tế]
+2. **Score Breakdown:**
+   - 1a. Main Ideas & Details: [X]/0.35
+   - 1b. Communicating Intentions: [X]/0.35
+   - 2a. Cohesion & Coherence: [X]/0.30
+   - 2b. Structural Composition: [X]/0.30
+   - 3a. Vocabulary Range: [X]/0.30
+   - 3b. Grammatical Control: [X]/0.30
+   - 4a. Spelling & Punctuation: [X]/0.05
+   - 4b. Word Count & Presentation: [X]/0.05
+   - **TOTAL SCORE:** [X]/2.0
+3. **Detailed Justification:** Nhận xét ưu điểm và nhược điểm cụ thể cho từng tiêu chí.
+4. **Actionable Corrections:**
 
-*(Ghi chú: Nếu vi phạm OFF-TOPIC ZERO RULE, tất cả điểm thành phần và tổng điểm ghi 0.00/2.0).*
+| Lỗi gốc | Loại lỗi | Gợi ý sửa đổi | Giải thích ngắn |
+|---|---|---|---|
+| ... | ... | ... | ... |
 
-### 3. 🔍 SOI LỖI CHI TIẾT (KÈM DỊCH NGHĨA TIẾNG VIỆT ĐỀ XUẤT)
-
-| Câu văn gốc của học sinh | Lỗi sai (Ngữ pháp / Collocation / Sính từ) | Đề xuất sửa chuẩn xác & Dịch nghĩa tiếng Việt |
-|---|---|---|
-| (Câu gốc của HS) | (Chỉ rõ lỗi) | **English:** [Câu sửa chuẩn tự nhiên]<br>👉 **Dịch nghĩa:** [Bản dịch tiếng Việt tương ứng] |
-
-### 4. 💎 NÂNG CẤP TỪ VỰNG & DIỄN ĐẠT THEN CHỐT (KÈM PHIÊN ÂM & NGHĨA)
-1. **[Cụm từ tiếng Anh]** /phiên âm IPA/: Dịch nghĩa tiếng Việt và cách dùng trong chủ đề này.
-​2. **[Cụm từ tiếng Anh]** /phiên âm IPA/: Dịch nghĩa tiếng Việt và cách dùng trong chủ đề này.
-3. **[Cụm từ tiếng Anh]** /phiên âm IPA/: Dịch nghĩa tiếng Việt và cách dùng trong chủ đề này.
-4. **[Cụm từ tiếng Anh]** /phiên âm IPA/: Dịch nghĩa tiếng Việt và cách dùng trong chủ đề này.
-5. **[Cụm từ tiếng Anh]** /phiên âm IPA/: Dịch nghĩa tiếng Việt và cách dùng trong chủ đề này.
-
-### 5. ✍️ BÀI VIẾT MẪU THAM KHẢO THEO 2 CẤP ĐỘ (CHUẨN ~250 TỪ)
-
-#### 🔹 Cấp độ 1: Bản Nền tảng & Dễ tiếp thu (Mức độ B1 đến B1+ - Mọi học sinh đều học và nhớ được)
-- **Đặc điểm:** Bố cục chuẩn mực, diễn đạt sáng rõ, ngữ pháp tuyệt đối chuẩn, từ vựng quen thuộc nhưng chính xác, 2 ý triển khai có chiều sâu rõ rệt (vận dụng triệt để khung template chuẩn từ tài liệu tập huấn).
-
-[Viết toàn bài essay mẫu hoàn chỉnh Cấp độ B1-B1+ chuẩn khoảng 250 từ tại đây]
-
-**Bảng thống kê 10 từ vựng / cụm từ / mẫu câu hữu dụng của Cấp độ 1:**
-
-| STT | Từ vựng / Cụm từ / Mẫu câu | Phiên âm quốc tế (IPA) | Dịch nghĩa tiếng Việt & Ngữ cảnh áp dụng |
-|:---:|---|---|---|
-| 1 | ... | /.../ | ... |
-| 2 | ... | /.../ | ... |
-| 3 | ... | /.../ | ... |
-| 4 | ... | /.../ | ... |
-| 5 | ... | /.../ | ... |
-| 6 | ... | /.../ | ... |
-| 7 | ... | /.../ | ... |
-| 8 | ... | /.../ | ... |
-| 9 | ... | /.../ | ... |
-| 10 | ... | /.../ | ... |
-
----
-
-#### 🔸 Cấp độ 2: Bản Nâng cao & Bứt phá điểm số (Học thuật C1-C2 - Dành cho đội tuyển chuyên sâu)
-- **Đặc điểm:** Lập luận sắc sảo, kỹ thuật Hedging để đánh giá nhận định đa chiều, kết nối mượt mà, từ vựng tự nhiên và chuẩn văn phong học thuật cao cấp.
-
-[Viết toàn bài essay mẫu hoàn chỉnh Cấp độ C1-C2 chuẩn khoảng 250 từ tại đây]
-
-**Bảng thống kê 10 từ vựng / collocations / cấu trúc học thuật tinh hoa của Cấp độ 2:**
-
-| STT | Từ vựng / Collocation / Cấu trúc | Phiên âm quốc tế (IPA) | Dịch nghĩa tiếng Việt & Giá trị biểu đạt học thuật |
-|:---:|---|---|---|
-| 1 | ... | /.../ | ... |
-| 2 | ... | /.../ | ... |
-| 3 | ... | /.../ | ... |
-| 4 | ... | /.../ | ... |
-| 5 | ... | /.../ | ... |
-| 6 | ... | /.../ | ... |
-| 7 | ... | /.../ | ... |
-| 8 | ... | /.../ | ... |
-| 9 | ... | /.../ | ... |
-| 10 | ... | /.../ | ... |
-
-### 6. ⚠️ DANH SÁCH LỖI THEN CHỐT CẦN LƯU HỒ SƠ:
-(Ghi 1-3 lỗi cốt lõi ngắn gọn để ghi nhớ vào CSDL theo dõi cá nhân).
+5. **Suggested Rewrite (Gợi ý viết lại chuẩn ~250 từ):**
+- Viết lại bài luận hoàn chỉnh cho đề bài trên. Nếu là dạng "To what extent do you agree or disagree?", áp dụng triệt để cấu trúc 4 đoạn và các Template Argumentative Essay ở trên (giữ văn phong học thuật B2-C1, tránh overclaiming).
 """
 
 # Quản lý Đăng nhập
@@ -704,14 +686,14 @@ if user["role"] == "student":
                             "date_str": now_str
                         }
                         
-                        s_c, s_o, s_l, s_m, s_p, s_tot, s_err = parse_scores_from_feedback(result_text)
+                        s_c, s_o, s_l, s_m, s_tot, s_err = parse_scores_from_feedback(result_text)
                         
                         conn = get_db_connection()
                         c = conn.cursor()
                         c.execute('''
-                            INSERT INTO submissions (username, topic, essay_text, score_total, score_content, score_org, score_lang, score_mech, score_penalty, feedback, identified_errors, created_at)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ''', (user["username"], essay_prompt, essay_text, s_tot, s_c, s_o, s_l, s_m, s_p, result_text, s_err, now_str))
+                            INSERT INTO submissions (username, topic, essay_text, score_total, score_content, score_org, score_lang, score_mech, feedback, identified_errors, created_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ''', (user["username"], essay_prompt, essay_text, s_tot, s_c, s_o, s_l, s_m, result_text, s_err, now_str))
                         conn.commit()
                         c.close()
                         conn.close()
@@ -825,13 +807,13 @@ elif user["role"] == "teacher":
             if chosen_topic == "-- Tất cả các đề bài --":
                 if is_super_admin:
                     c.execute('''
-                        SELECT s.id, COALESCE(u.fullname, s.username), s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, COALESCE(s.score_penalty, 0.00), s.score_total, s.identified_errors, s.created_at
+                        SELECT s.id, COALESCE(u.fullname, s.username), s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
                         FROM submissions s LEFT JOIN users u ON s.username = u.username
                         ORDER BY s.id DESC
                     ''')
                 else:
                     c.execute('''
-                        SELECT s.id, u.fullname, s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, COALESCE(s.score_penalty, 0.00), s.score_total, s.identified_errors, s.created_at
+                        SELECT s.id, u.fullname, s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
                         FROM submissions s JOIN users u ON s.username = u.username
                         WHERE u.teacher_username = %s
                         ORDER BY s.id DESC
@@ -839,14 +821,14 @@ elif user["role"] == "teacher":
             else:
                 if is_super_admin:
                     c.execute('''
-                        SELECT s.id, COALESCE(u.fullname, s.username), s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, COALESCE(s.score_penalty, 0.00), s.score_total, s.identified_errors, s.created_at
+                        SELECT s.id, COALESCE(u.fullname, s.username), s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
                         FROM submissions s LEFT JOIN users u ON s.username = u.username
                         WHERE s.topic = %s
                         ORDER BY s.id DESC
                     ''', (chosen_topic,))
                 else:
                     c.execute('''
-                        SELECT s.id, u.fullname, s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, COALESCE(s.score_penalty, 0.00), s.score_total, s.identified_errors, s.created_at
+                        SELECT s.id, u.fullname, s.topic, s.score_content, s.score_org, s.score_lang, s.score_mech, s.score_total, s.identified_errors, s.created_at
                         FROM submissions s JOIN users u ON s.username = u.username
                         WHERE s.topic = %s AND u.teacher_username = %s
                         ORDER BY s.id DESC
@@ -856,7 +838,7 @@ elif user["role"] == "teacher":
             df_export = pd.DataFrame(subs, columns=[
                 "Mã bài", "Họ và tên học sinh", "Đề bài", 
                 "Content (0.7)", "Org (0.6)", "Lang (0.6)", "Mech (0.1)", 
-                "Điểm trừ (Penalty)", "Tổng điểm (2.0)", "Lỗi trọng tâm cần sửa", "Thời gian nộp"
+                "Tổng điểm (2.0)", "Lỗi trọng tâm cần sửa", "Thời gian nộp"
             ])
             
             st.write(f"Số bài nộp: **{len(subs)} bài**")
@@ -979,13 +961,13 @@ elif user["role"] == "teacher":
                                 except Exception:
                                     conn.rollback()
 
-                            sc, so, sl, sm, sp, stot, s_err = parse_scores_from_feedback(batch_graded_text)
+                            sc, so, sl, sm, stot, s_err = parse_scores_from_feedback(batch_graded_text)
                             now_vn = get_vn_time_str("%d/%m/%Y %H:%M")
 
                             c.execute('''
-                                INSERT INTO submissions (username, topic, essay_text, score_total, score_content, score_org, score_lang, score_mech, score_penalty, feedback, identified_errors, created_at)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                            ''', (matched_username, batch_essay_prompt, f"(Bài chấm giấy từ file {uploaded_file.name})", stot, sc, so, sl, sm, sp, batch_graded_text, s_err, now_vn))
+                                INSERT INTO submissions (username, topic, essay_text, score_total, score_content, score_org, score_lang, score_mech, feedback, identified_errors, created_at)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ''', (matched_username, batch_essay_prompt, f"(Bài chấm giấy từ file {uploaded_file.name})", stot, sc, so, sl, sm, batch_graded_text, s_err, now_vn))
                             conn.commit()
 
                             success_count += 1
