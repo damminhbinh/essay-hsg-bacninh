@@ -18,14 +18,13 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml import parse_xml
 from docx.oxml.ns import nsdecls
 
-# Hàm làm tròn chuẩn toán học Việt Nam (5 làm tròn lên, tránh lỗi làm tròn xuống của float Python)
+# Hàm làm tròn chuẩn toán học Việt Nam (khử hoàn toàn sai số dấu phẩy động kiểu 1.4749999999999999)
 def round_vn(val, decimals=2):
-    d = Decimal(str(val))
+    d = Decimal(f"{float(val):.6f}")
     fmt = "0." + "0" * decimals if decimals > 0 else "0"
     return float(d.quantize(Decimal(fmt), rounding=ROUND_HALF_UP))
 
 def fmt_score(val):
-    # Hiển thị gọn: nếu tròn 2 chữ số (vd 0.450 -> 0.45), nếu lẻ phần nghìn (vd 0.425 -> 0.425)
     r3 = round_vn(val, 3)
     if round_vn(r3, 2) == r3:
         return f"{r3:.2f}"
@@ -72,19 +71,19 @@ def parse_and_fix_feedback(text):
 
         def extract_subscore(code, max_str):
             # Kiểu 1: 1a. ... 0.225 / 0.35 hoặc (0.225/0.35)
-            p1 = rf'{code}\.[^\n|]*?([0-9.]+)\s*/\s*{max_str}'
+            p1 = rf'{code}\.[^\n|]*?(0\.[0-9]+|0)\s*/\s*{max_str}'
             m1 = re.search(p1, clean_text, re.IGNORECASE)
             if m1:
                 return min(float(m1.group(1)), float(max_str))
             
             # Kiểu 2: Bảng 3 cột (như bài #153 của Trà): | 1a. Main Ideas & Details | 0.35 | 0.225 |
-            p2 = rf'\|\s*{code}\.[^|\n]*\|\s*{max_str}0?\s*\|\s*([0-9.]+)'
+            p2 = rf'\|\s*{code}\.[^|\n]*\|\s*{max_str}0?\s*\|\s*(0\.[0-9]+|0(?:\.0+)?)'
             m2 = re.search(p2, clean_text, re.IGNORECASE)
             if m2:
                 return min(float(m2.group(1)), float(max_str))
                 
-            # Kiểu 3: Dòng danh sách: 1a. Main Ideas & Details: 0.225
-            p3 = rf'{code}\.[^:\n|]*:\s*([0-9.]+)'
+            # Kiểu 3: Dòng danh sách chỉ chứa số thập phân 0.xxx ngay sau dấu hai chấm
+            p3 = rf'{code}\.[^:\n|]*:\s*(0\.[0-9]+|0\.0+)'
             m3 = re.search(p3, clean_text, re.IGNORECASE)
             if m3:
                 return min(float(m3.group(1)), float(max_str))
@@ -307,7 +306,8 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md,
         r.font.size = Pt(13.5)
         r.font.color.rgb = RGBColor(0x0b, 0x3c, 0x5d)
         
-    lines = feedback_md.split('\n')
+    # Nối thêm 1 dòng trống ở cuối để đảm bảo bảng nằm ở cuối văn bản luôn được vẽ ra Word
+    lines = feedback_md.split('\n') + ['']
     in_table = False
     table_lines = []
     
@@ -342,7 +342,7 @@ def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md,
                                 p.paragraph_format.space_after = Pt(0)
                                 
                                 if is_header:
-                                    r = p.add_run(val)
+                                    r = p.add_run(regex_clean_header := re.sub(r'\*\*', '', val))
                                     r.bold = True
                                     r.font.name = 'Times New Roman'
                                     r.font.size = Pt(11)
