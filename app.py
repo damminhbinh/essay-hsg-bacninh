@@ -40,48 +40,124 @@ AUTHOR_INFO_MARKDOWN = """
 🏫 *Trường THCS Thân Nhân Trung - TP. Bắc Ninh*
 """
 
-# HÀM BÓC TÁCH ĐIỂM THỰC TẾ VÀ LỖI THỰC TẾ TỪ PHẢN HỒI CỦA GIÁM KHẢO AI
-def parse_scores_from_feedback(text):
+# HÀM PYTHON TỰ BÓC TÁCH, TỰ CỘNG ĐIỂM CHÍNH XÁC 100% VÀ TỰ SỬA LẠI TỔNG ĐIỂM TRONG VĂN BẢN AI
+def parse_and_fix_feedback(text):
     s_content = 0.0
     s_org = 0.0
     s_lang = 0.0
     s_mech = 0.0
     s_total = 0.0
     errors_str = "Chưa ghi nhận lỗi nghiêm trọng"
+    fixed_text = text if text else ""
     
     if not text:
-        return s_content, s_org, s_lang, s_mech, s_total, errors_str
+        return s_content, s_org, s_lang, s_mech, s_total, errors_str, fixed_text
         
     try:
-        # Làm sạch các ký tự markdown thừa (*, _, `, [, ]) để bắt điểm chính xác 100%
-        clean_text = re.sub(r'[\*_`\[\]]', '', text)
+        clean_text = re.sub(r'[\*_`]', '', text)
 
-        m_c = re.search(r'1\.\s*Content.*?(?:0\.70|0\.7)\s*\|\s*([0-9.]+)', clean_text, re.IGNORECASE)
-        if m_c:
-            s_content = float(m_c.group(1))
-        
-        m_o = re.search(r'2\.\s*Organization.*?(?:0\.60|0\.6)\s*\|\s*([0-9.]+)', clean_text, re.IGNORECASE)
-        if m_o:
-            s_org = float(m_o.group(1))
-        
-        m_l = re.search(r'3\.\s*Language.*?(?:0\.60|0\.6)\s*\|\s*([0-9.]+)', clean_text, re.IGNORECASE)
-        if m_l:
-            s_lang = float(m_l.group(1))
-        
-        m_m = re.search(r'4\.\s*(?:Mechanics|Punctuation).*?(?:0\.10|0\.1)\s*\|\s*([0-9.]+)', clean_text, re.IGNORECASE)
-        if m_m:
-            s_mech = float(m_m.group(1))
-        
-        m_t = re.search(r'TỔNG ĐIỂM BÀI THI.*?(?:2\.00|2\.0)\s*\|\s*([0-9.]+)', clean_text, re.IGNORECASE)
-        if m_t:
-            s_total = round(float(m_t.group(1)), 2)
+        # Chỉ bắt số đứng ngay trước dấu gạch chéo (ví dụ: 0.25/0.35 hoặc 0.25 / 0.35) để KHÔNG BAO GIỜ bắt nhầm số tối đa
+        def extract_subscore(code, max_str):
+            pattern = rf'{code}\..*?([0-9.]+)\s*/\s*{max_str}'
+            m = re.search(pattern, clean_text, re.IGNORECASE)
+            if m:
+                val = float(m.group(1))
+                max_val = float(max_str)
+                return min(val, max_val)
+            return None
+
+        s_1a = extract_subscore('1a', '0.35')
+        s_1b = extract_subscore('1b', '0.35')
+        s_2a = extract_subscore('2a', '0.30')
+        s_2b = extract_subscore('2b', '0.30')
+        s_3a = extract_subscore('3a', '0.30')
+        s_3b = extract_subscore('3b', '0.30')
+        s_4a = extract_subscore('4a', '0.05')
+        s_4b = extract_subscore('4b', '0.05')
+
+        # Bắt từ cột thứ 3 (Điểm đạt) của bảng 4 tiêu chí
+        m_c_tbl = re.search(r'\|\s*1\.\s*Content[^|]*\|\s*0\.70?\s*\|\s*([0-9.]+)\s*\|', clean_text, re.IGNORECASE)
+        m_o_tbl = re.search(r'\|\s*2\.\s*Organization[^|]*\|\s*0\.60?\s*\|\s*([0-9.]+)\s*\|', clean_text, re.IGNORECASE)
+        m_l_tbl = re.search(r'\|\s*3\.\s*Language[^|]*\|\s*0\.60?\s*\|\s*([0-9.]+)\s*\|', clean_text, re.IGNORECASE)
+        m_m_tbl = re.search(r'\|\s*4\.\s*(?:Mechanics|Punctuation)[^|]*\|\s*0\.10?\s*\|\s*([0-9.]+)\s*\|', clean_text, re.IGNORECASE)
+
+        if s_1a is not None and s_1b is not None:
+            s_content = round(min(0.70, s_1a + s_1b), 3)
+        elif m_c_tbl:
+            s_content = round(min(0.70, float(m_c_tbl.group(1))), 3)
+
+        if s_2a is not None and s_2b is not None:
+            s_org = round(min(0.60, s_2a + s_2b), 3)
+        elif m_o_tbl:
+            s_org = round(min(0.60, float(m_o_tbl.group(1))), 3)
+
+        if s_3a is not None and s_3b is not None:
+            s_lang = round(min(0.60, s_3a + s_3b), 3)
+        elif m_l_tbl:
+            s_lang = round(min(0.60, float(m_l_tbl.group(1))), 3)
+
+        if s_4a is not None and s_4b is not None:
+            s_mech = round(min(0.10, s_4a + s_4b), 3)
+        elif m_m_tbl:
+            s_mech = round(min(0.10, float(m_m_tbl.group(1))), 3)
+
+        # PYTHON TỰ CỘNG TỔNG ĐIỂM CHÍNH XÁC 100%
+        raw_sum = s_content + s_org + s_lang + s_mech
+        if raw_sum > 0:
+            s_total = round(min(2.00, raw_sum), 2)
         else:
-            s_total = round(max(0.0, s_content + s_org + s_lang + s_mech), 2)
-            
-        m_err = re.search(r'(?:6\.\s*⚠\s*DANH SÁCH LỖI THEN CHỐT CẦN LƯU HỒ SƠ|DANH SÁCH LỖI THEN CHỐT)[:\s*\n]+(.*?)(?:\n###|\Z)', text, re.DOTALL | re.IGNORECASE)
+            m_t = re.search(r'(?:TỔNG ĐIỂM BÀI THI.*?(?:2\.00|2\.0)\s*\|\s*|TOTAL SCORE\s*:\s*)([0-9.]+)', clean_text, re.IGNORECASE)
+            if m_t:
+                s_total = round(min(2.00, float(m_t.group(1))), 2)
+
+        # TỰ ĐỘNG GHI ĐÈ ĐIỂM ĐÚNG CỦA PYTHON VÀO VĂN BẢN NHẬN XÉT ĐỂ HIỂN THỊ & XUẤT WORD KHỚP 100%
+        if raw_sum > 0:
+            fixed_text = re.sub(
+                r'(\|\s*\*{0,2}1\.\s*Content\*{0,2}[^|]*\|\s*0\.70?\s*\|\s*)\*{0,2}[0-9.]+\*{0,2}',
+                rf'\g<1>**{s_content:.2f}**',
+                fixed_text,
+                flags=re.IGNORECASE
+            )
+            fixed_text = re.sub(
+                r'(\|\s*\*{0,2}2\.\s*Organization\*{0,2}[^|]*\|\s*0\.60?\s*\|\s*)\*{0,2}[0-9.]+\*{0,2}',
+                rf'\g<1>**{s_org:.2f}**',
+                fixed_text,
+                flags=re.IGNORECASE
+            )
+            fixed_text = re.sub(
+                r'(\|\s*\*{0,2}3\.\s*Language\*{0,2}[^|]*\|\s*0\.60?\s*\|\s*)\*{0,2}[0-9.]+\*{0,2}',
+                rf'\g<1>**{s_lang:.2f}**',
+                fixed_text,
+                flags=re.IGNORECASE
+            )
+            fixed_text = re.sub(
+                r'(\|\s*\*{0,2}4\.\s*(?:Mechanics|Punctuation)\*{0,2}[^|]*\|\s*0\.10?\s*\|\s*)\*{0,2}[0-9.]+\*{0,2}',
+                rf'\g<1>**{s_mech:.2f}**',
+                fixed_text,
+                flags=re.IGNORECASE
+            )
+            fixed_text = re.sub(
+                r'(\|\s*\*{0,2}TỔNG ĐIỂM BÀI THI\*{0,2}\s*\|\s*\*{0,2}2\.00?\*{0,2}\s*\|\s*)\*{0,2}[0-9.]+\s*(?:/\s*2\.00?)?\*{0,2}',
+                rf'\g<1>**{s_total:.2f} / 2.0**',
+                fixed_text,
+                flags=re.IGNORECASE
+            )
+            fixed_text = re.sub(
+                r'(\*{0,2}TOTAL SCORE:\*{0,2}\s*)\*{0,2}[0-9.]+\s*/\s*2\.00?\*{0,2}',
+                rf'\g<1>**{s_total:.2f} / 2.0**',
+                fixed_text,
+                flags=re.IGNORECASE
+            )
+
+        # Bóc tách lỗi then chốt
+        m_err = re.search(r'(?:6\.\s*⚠\s*DANH SÁCH LỖI THEN CHỐT CẦN LƯU HỒ SƠ|DANH SÁCH LỖI THEN CHỐT|4\.\s*\*{0,2}Actionable Corrections\*{0,2})[:\s*\n]+(.*?)(?:\n###|\n5\.|\Z)', fixed_text, re.DOTALL | re.IGNORECASE)
         if m_err:
             raw_err = m_err.group(1).strip()
-            cleaned_lines = [re.sub(r'^[\s*\-0-9.)]+', '', line).strip() for line in raw_err.split('\n') if line.strip()]
+            cleaned_lines = [
+                re.sub(r'^[\s*\-0-9.)|]+', '', line).strip()
+                for line in raw_err.split('\n')
+                if line.strip() and not line.strip().startswith('|---') and not line.strip().lower().startswith('| lỗi gốc')
+            ]
             if cleaned_lines:
                 errors_str = " | ".join(cleaned_lines[:3])
                 if len(errors_str) > 120:
@@ -89,7 +165,11 @@ def parse_scores_from_feedback(text):
     except Exception:
         pass
         
-    return s_content, s_org, s_lang, s_mech, s_total, errors_str
+    return s_content, s_org, s_lang, s_mech, s_total, errors_str, fixed_text
+
+def parse_scores_from_feedback(text):
+    sc, so, sl, sm, stot, serr, _ = parse_and_fix_feedback(text)
+    return sc, so, sl, sm, stot, serr
 
 # CÁC HÀM HỖ TRỢ ĐỊNH DẠNG BẢNG VÀ CHỮ CHO FILE WORD
 def set_table_styling(table):
@@ -151,6 +231,8 @@ def add_formatted_runs_to_paragraph(p, text, font_size=11, default_bold=False):
 
 # HÀM TẠO FILE DOCX CHUẨN THỂ THỨC PHIẾU CŨ (TIMES NEW ROMAN, CỠ 13PT, LỀ TRÁI 3CM, CÒN LẠI 2CM)
 def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md, teacher_name="Cô Đỗ Thị Huyền"):
+    _, _, _, _, _, _, feedback_md = parse_and_fix_feedback(feedback_md)
+    
     doc = Document()
     for section in doc.sections:
         section.top_margin = Inches(0.79)     # 2.0 cm
@@ -310,7 +392,7 @@ def get_db_connection():
 
 SUPER_ADMIN_USERS = ["giaovien", "gv_binh"]
 
-# 3. Huấn luyện System Instruction chuẩn Barem 2.0 Bắc Ninh (Giữ nguyên cấu trúc 6 mục Phiếu cũ, bỏ nội dung phạt trừ điểm)
+# 3. Huấn luyện System Instruction chuẩn Barem 2.0 Bắc Ninh (Khóa chặt mức trần điểm theo số lỗi đếm được)
 SYSTEM_INSTRUCTION = """
 ============================================================
 0. QUY TẮC BẮT BUỘC VỀ SỰ PHÙ HỢP CỦA CHỦ ĐỀ (OFF-TOPIC ZERO RULE):
@@ -331,24 +413,48 @@ SYSTEM_INSTRUCTION = """
 - Tại mục Đánh giá tổng quan và Bảng điểm, phải nêu rõ lý do: "Bài viết lạc đề / không trả lời đúng yêu cầu của đề bài (Off-topic). Điểm đánh giá: 0."
 
 ============================================================
-OFFICIAL BAC NINH 2.0-POINT DETAILED RUBRIC (KHÔNG CÓ MỤC TRỪ ĐIỂM RIÊNG):
+OFFICIAL BAC NINH 2.0-POINT DETAILED RUBRIC & QUY TẮC NEO ĐIỂM TRẦN KHẮT KHE:
+(Yêu cầu: Giám khảo phải liệt kê tất cả lỗi sai của học sinh trước, đếm số lượng lỗi rồi mới áp vào khung điểm trần dưới đây để đảm bảo chấm 10 lần cùng 1 bài đều ra đúng 1 mức điểm duy nhất):
+
 1. Content (0.70 điểm - 35%):
-- a. Main ideas and details (0.35 điểm): Đưa ra quan điểm rõ ràng ngay từ mở bài; có ít nhất 2 luận điểm chính phát triển mạch lạc với ví dụ/giải thích cụ thể (0.30-0.35: đầy đủ sâu sắc; 0.20-0.25: đủ ý nhưng còn mỏng; 0.10-0.15: thiếu ý; 0.0: lạc đề).
-- b. Communicating intentions (0.35 điểm): Thể hiện lập trường xuyên suốt từ đầu đến kết luận mà không tự mâu thuẫn; lập luận thuyết phục (0.30-0.35: nhất quán cao; 0.20-0.25: đôi chỗ lỏng lẻo; 0.05-0.15: mâu thuẫn).
+- 1a. Main ideas and details (Tối đa 0.35):
+  + 0.30 - 0.35: Quan điểm rõ từ mở bài, >=2 luận điểm phát triển sâu sắc (đủ Why -> How -> Example).
+  + 0.20 - 0.25: Đủ 2 ý nhưng giải thích cơ chế còn mỏng, chung chung hoặc ví dụ chưa sát.
+  + 0.10 - 0.15: Thiếu ý, liệt kê ý (idea dumping) hoặc mất cân đối nghiêm trọng.
+- 1b. Communicating intentions (Tối đa 0.35):
+  + 0.30 - 0.35: Lập trường xuyên suốt, thuyết phục cao, phản biện sắc bén.
+  + 0.20 - 0.25: Ý định rõ nhưng đôi chỗ lập luận còn lỏng lẻo hoặc hơi áp đặt (overclaiming).
+  + 0.05 - 0.15: Không rõ lập trường hoặc tự mâu thuẫn.
 
 2. Organization & Presentation (0.60 điểm - 30%):
-- a. Coherence, cohesion & clarity (0.30 điểm): Mạch lập luận tự nhiên, chuyển đoạn mượt mà; dùng từ nối linh hoạt, tránh lạm dụng máy móc Firstly/Secondly/Last but not least (0.25-0.30: tự nhiên tinh tế; 0.15-0.20: cơ bản; 0.0-0.10: rời rạc).
-- b. Well-structured composition (0.30 điểm): Cấu trúc chuẩn 4 hoặc 5 đoạn: Introduction (Hook + Thesis statement), 2-3 Body paragraphs (Topic sentence + Supporting sentences), Conclusion (Restatement + Final thought) (0.25-0.30: chuẩn mực; 0.15-0.20: chia đoạn chưa tối ưu; 0.0-0.10: không phân đoạn).
+- 2a. Coherence, cohesion & clarity (Tối đa 0.30):
+  + 0.25 - 0.30: Chuyển đoạn/ý mượt mà, tự nhiên, không lạm dụng từ nối máy móc.
+  + 0.15 - 0.20: Đạt mức cơ bản, còn lạm dụng từ nối máy móc (Firstly, Secondly, In conclusion...) hoặc chuyển ý hơi gượng.
+  + 0.05 - 0.10: Rời rạc, thiếu liên kết.
+- 2b. Well-structured composition (Tối đa 0.30):
+  + 0.25 - 0.30: Cấu trúc chuẩn 4-5 đoạn cân đối (Intro, 2-3 Body, Conclusion).
+  + 0.15 - 0.20: Có đủ mở-thân-kết nhưng chia đoạn chưa cân đối.
+  + 0.05 - 0.10: Không phân đoạn hoặc chỉ có 1 đoạn thân bài.
 
 3. Language (0.60 điểm - 30% - Tiêu chuẩn HSG Chuyên Anh THCS B2-C1):
-- a. Vocabulary & Complex structures (0.30 điểm): Từ vựng nâng cao đúng ngữ cảnh (academic collocations, topic-specific vocabulary); đa dạng cấu trúc (câu phức, mệnh đề quan hệ rút gọn, đảo ngữ, câu điều kiện, bị động nâng cao) (0.25-0.30: phong phú tự nhiên; 0.15-0.20: đơn giản A2-B1; 0.10-0.15: gượng ép sính từ).
-- b. Grammatical control (0.30 điểm): Kiểm soát tốt hòa hợp chủ-vị, thì động từ, mạo từ, giới từ (0.25-0.30: 0-2 lỗi nhỏ; 0.15-0.20: một số lỗi nhưng vẫn hiểu; 0.0-0.10: dày đặc lỗi).
+- 3a. Vocabulary & Complex structures (Tối đa 0.30):
+  + 0.25 - 0.30: Vốn từ B2-C1 phong phú, collocations tự nhiên, đa dạng cấu trúc phức/đảo ngữ/rút gọn, KHÔNG có lỗi dùng từ sai ngữ cảnh.
+  + 0.15 - 0.20: Dùng từ đúng nhưng ở mức B1, HOẶC có từ 2 lỗi dùng từ gượng ép / dịch thô từ tiếng Việt (Vietlish) / sai collocation. (KHỐNG CHẾ TRẦN: Nếu có >=2 cụm Vietlish hoặc dùng từ sai ngữ cảnh, tối đa chỉ được cho 0.15 - 0.20).
+  + 0.10 - 0.15: Từ vựng nghèo nàn (A2) hoặc chêm từ đao to búa lớn sai nghĩa hàng loạt.
+- 3b. Grammatical control (Tối đa 0.30):
+  + 0.25 - 0.30: Kiểm soát tốt, chỉ có tối đa 1-2 lỗi nhỏ (slips).
+  + 0.15 - 0.20: Có từ 3 đến 5 lỗi ngữ pháp (hòa hợp chủ-vị, chia động từ, mạo từ, giới từ, vị trí trạng từ...) nhưng vẫn hiểu nghĩa. (KHỐNG CHẾ TRẦN: Nếu có >=3 lỗi ngữ pháp cơ bản, tối đa chỉ được cho 0.15 - 0.20).
+  + 0.05 - 0.10: Trên 5 lỗi ngữ pháp nghiêm trọng gây cản trở đọc hiểu.
 
 4. Mechanics - Punctuation, Spelling and Word Count (0.10 điểm - 5%):
-- a. Punctuation & Spelling (0.05 điểm): Đúng chính tả, dấu phẩy sau trạng ngữ, dấu chấm, viết hoa đầu câu, không dùng từ viết tắt don't/isn't (0 lỗi: 0.05; 2-3 lỗi: 0.025; >3 lỗi: 0.0).
-- b. Formatting / Word Count (0.05 điểm): Độ dài đạt 220-280 từ (dung sai ±10% cho mức 250 từ) và trình bày chuẩn: 0.05 điểm; quá ngắn (<200 từ) hoặc quá dài (>320 từ): 0.025 điểm; dưới 150 từ: 0.0 điểm.
-
-- Quy tắc tính điểm: TỔNG ĐIỂM BÀI THI = Tổng 4 tiêu chí trên (làm tròn đến 2 chữ số thập phân, bước nhảy 0.05 hoặc 0.025). TUYỆT ĐỐI KHÔNG tạo mục hay dòng phạt trừ điểm riêng biệt.
+- 4a. Punctuation & Spelling (Tối đa 0.05):
+  + 0.05: Không mắc lỗi chính tả/dấu câu, không viết tắt.
+  + 0.025: Có 1-3 lỗi chính tả/dấu câu hoặc viết tắt.
+  + 0.00: Trên 3 lỗi chính tả/dấu câu.
+- 4b. Formatting & Word count (Tối đa 0.05):
+  + 0.05: Độ dài 220 - 280 từ và trình bày sạch đẹp.
+  + 0.025: Độ dài 150 - 219 từ hoặc >280 từ, hoặc gạch xóa nhiều.
+  + 0.00: Dưới 150 từ.
 
 ============================================================
 QUY CHUẨN CHUYÊN MÔN & TEMPLATE TẬP HUẤN (CHUYÊN BẮC NINH & THCS THÂN NHÂN TRUNG):
@@ -383,13 +489,13 @@ REQUIRED OUTPUT FORMAT (GIỮ NGUYÊN CẤU TRÚC 6 MỤC CỦA PHIẾU CŨ, KH�
 
 | Tiêu chí thành phần | Điểm tối đa | Điểm đạt | Nhận xét chi tiết của Giám khảo |
 | :--- | :---: | :---: | :--- |
-| **1. Content** (Ý tưởng & Lập luận) | 0.70 | **...** | - **1a. Main ideas & details (.../0.35):** ...<br>- **1b. Communicating intentions (.../0.35):** ... |
-| **2. Organization** (Bố cục & Mạch lạc) | 0.60 | **...** | - **2a. Coherence, cohesion & clarity (.../0.30):** ...<br>- **2b. Well-structured composition (.../0.30):** ... |
-| **3. Language** (Từ vựng & Ngữ pháp) | 0.60 | **...** | - **3a. Vocabulary & Complex structures (.../0.30):** ...<br>- **3b. Grammatical control (.../0.30):** ... |
-| **4. Mechanics** (Chính tả, Thể thức & Số từ) | 0.10 | **...** | - **4a. Punctuation & Spelling (.../0.05):** ...<br>- **4b. Formatting & Word count (.../0.05):** ... |
-| **TỔNG ĐIỂM BÀI THI** | **2.00** | **... / 2.0** | **Ước lượng band IELTS tương đương: ...** |
+| **1. Content** (Ý tưởng & Lập luận) | 0.70 | **[Tổng 1a+1b]** | - **1a. Main ideas & details ([Điểm]/0.35):** ...<br>- **1b. Communicating intentions ([Điểm]/0.35):** ... |
+| **2. Organization** (Bố cục & Mạch lạc) | 0.60 | **[Tổng 2a+2b]** | - **2a. Coherence, cohesion & clarity ([Điểm]/0.30):** ...<br>- **2b. Well-structured composition ([Điểm]/0.30):** ... |
+| **3. Language** (Từ vựng & Ngữ pháp) | 0.60 | **[Tổng 3a+3b]** | - **3a. Vocabulary & Complex structures ([Điểm]/0.30):** ...<br>- **3b. Grammatical control ([Điểm]/0.30):** ... |
+| **4. Mechanics** (Chính tả, Thể thức & Số từ) | 0.10 | **[Tổng 4a+4b]** | - **4a. Punctuation & Spelling ([Điểm]/0.05):** ...<br>- **4b. Formatting & Word count ([Điểm]/0.05):** ... |
+| **TỔNG ĐIỂM BÀI THI** | **2.00** | **[Tổng 4 mục] / 2.0** | **Ước lượng band IELTS tương đương: ...** |
 
-*(Ghi chú: Điểm đạt của từng tiêu chí là tổng 2 mục nhỏ a + b; TỔNG ĐIỂM BÀI THI là tổng của 4 tiêu chí trên. Nếu vi phạm OFF-TOPIC ZERO RULE, tất cả điểm ghi 0.00).*
+*(Ghi chú bắt buộc: Phải ghi rõ điểm từng mục nhỏ dạng `(0.25/0.35)` ở cột Nhận xét chi tiết. Điểm đạt của từng tiêu chí lớn bằng tổng `a + b`; TỔNG ĐIỂM BÀI THI bằng tổng 4 tiêu chí. Nếu vi phạm OFF-TOPIC ZERO RULE, tất cả điểm ghi 0.00).*
 
 ### 3. 🔍 SOI LỖI CHI TIẾT (KÈM DỊCH NGHĨA TIẾNG VIỆT ĐỀ XUẤT)
 
@@ -683,7 +789,9 @@ if user["role"] == "student":
                                     model=target_model,
                                     contents=user_content,
                                     config=types.GenerateContentConfig(
-                                        system_instruction=SYSTEM_INSTRUCTION                                        
+                                        system_instruction=SYSTEM_INSTRUCTION,
+                                        temperature=0.0,
+                                        top_p=0.1
                                     )
                                 )
                                 if response and response.text:
@@ -698,21 +806,21 @@ if user["role"] == "student":
 
                     if success:
                         now_str = get_vn_time_str("%d/%m/%Y %H:%M")
+                        s_c, s_o, s_l, s_m, s_tot, s_err, fixed_result_text = parse_and_fix_feedback(result_text)
+                        
                         st.session_state.last_graded_result = {
                             "topic": essay_prompt,
                             "essay_text": essay_text,
-                            "result_text": result_text,
+                            "result_text": fixed_result_text,
                             "date_str": now_str
                         }
-                        
-                        s_c, s_o, s_l, s_m, s_tot, s_err = parse_scores_from_feedback(result_text)
                         
                         conn = get_db_connection()
                         c = conn.cursor()
                         c.execute('''
                             INSERT INTO submissions (username, topic, essay_text, score_total, score_content, score_org, score_lang, score_mech, feedback, identified_errors, created_at)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ''', (user["username"], essay_prompt, essay_text, s_tot, s_c, s_o, s_l, s_m, result_text, s_err, now_str))
+                        ''', (user["username"], essay_prompt, essay_text, s_tot, s_c, s_o, s_l, s_m, fixed_result_text, s_err, now_str))
                         conn.commit()
                         c.close()
                         conn.close()
@@ -773,7 +881,8 @@ if user["role"] == "student":
                         )
                     except Exception:
                         pass
-                    st.markdown(r[3])
+                    _, _, _, _, _, _, fixed_fb = parse_and_fix_feedback(r[3])
+                    st.markdown(fixed_fb)
 
 # =========================================================================
 # GIAO DIỆN GIÁO VIÊN
@@ -808,22 +917,22 @@ elif user["role"] == "teacher":
             st.markdown(f"### 📊 Báo cáo kết quả & Xuất Bảng điểm Excel của lớp")
         with col_sync:
             st.write("")
-            if st.button("🔄 Đồng bộ lại điểm từ nhận xét cũ", use_container_width=True):
+            if st.button("🔄 Đồng bộ & Sửa lại điểm cũ", use_container_width=True):
                 c.execute("SELECT id, feedback FROM submissions")
                 all_old_rows = c.fetchall()
                 updated_cnt = 0
                 for r_id, fb_text in all_old_rows:
                     if fb_text:
-                        sc, so, sl, sm, stot, serr = parse_scores_from_feedback(fb_text)
+                        sc, so, sl, sm, stot, serr, fixed_fb = parse_and_fix_feedback(fb_text)
                         if stot > 0:
                             c.execute('''
                                 UPDATE submissions
-                                SET score_content = %s, score_org = %s, score_lang = %s, score_mech = %s, score_total = %s, identified_errors = %s
+                                SET score_content = %s, score_org = %s, score_lang = %s, score_mech = %s, score_total = %s, identified_errors = %s, feedback = %s
                                 WHERE id = %s
-                            ''', (sc, so, sl, sm, stot, serr, r_id))
+                            ''', (sc, so, sl, sm, stot, serr, fixed_fb, r_id))
                             updated_cnt += 1
                 conn.commit()
-                st.success(f"Đã cập nhật đồng bộ lại điểm cho {updated_cnt} bài!")
+                st.success(f"Đã cộng lại chính xác và đồng bộ điểm cho {updated_cnt} bài!")
                 st.rerun()
         
         if is_super_admin:
@@ -972,7 +1081,9 @@ elif user["role"] == "teacher":
                                         model=target_model,
                                         contents=user_content_batch,
                                         config=types.GenerateContentConfig(
-                                            system_instruction=SYSTEM_INSTRUCTION                                            
+                                            system_instruction=SYSTEM_INSTRUCTION,
+                                            temperature=0.0,
+                                            top_p=0.1
                                         )
                                     )
                                     if response and response.text:
@@ -1001,13 +1112,13 @@ elif user["role"] == "teacher":
                                 except Exception:
                                     conn.rollback()
 
-                            sc, so, sl, sm, stot, s_err = parse_scores_from_feedback(batch_graded_text)
+                            sc, so, sl, sm, stot, s_err, fixed_batch_text = parse_and_fix_feedback(batch_graded_text)
                             now_vn = get_vn_time_str("%d/%m/%Y %H:%M")
 
                             c.execute('''
                                 INSERT INTO submissions (username, topic, essay_text, score_total, score_content, score_org, score_lang, score_mech, feedback, identified_errors, created_at)
                                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                            ''', (matched_username, batch_essay_prompt, f"(Bài chấm giấy từ file {uploaded_file.name})", stot, sc, so, sl, sm, batch_graded_text, s_err, now_vn))
+                            ''', (matched_username, batch_essay_prompt, f"(Bài chấm giấy từ file {uploaded_file.name})", stot, sc, so, sl, sm, fixed_batch_text, s_err, now_vn))
                             conn.commit()
 
                             success_count += 1
@@ -1089,8 +1200,10 @@ elif user["role"] == "teacher":
                         st.success(f"Đã xoá bài nộp mã #{selected_sub[0]}!")
                         st.rerun()
                 
+                _, _, _, _, _, _, fixed_sub_fb = parse_and_fix_feedback(selected_sub[3])
+                
                 try:
-                    t_docx = generate_docx_report(selected_sub[1], selected_sub[2], selected_sub[5], selected_sub[4], selected_sub[3], teacher_name=user['fullname'])
+                    t_docx = generate_docx_report(selected_sub[1], selected_sub[2], selected_sub[5], selected_sub[4], fixed_sub_fb, teacher_name=user['fullname'])
                     st.download_button(
                         label=f"📥 Tải Phiếu Nhận Xét Word (.docx) của học sinh {selected_sub[1]}",
                         data=t_docx,
@@ -1107,7 +1220,7 @@ elif user["role"] == "teacher":
                     
                 st.markdown("---")
                 st.markdown("### 📝 Kết quả chấm & Nhận xét của AI:")
-                st.markdown(selected_sub[3])
+                st.markdown(fixed_sub_fb)
             else:
                 st.info("Chưa có học sinh nào nộp bài.")
         else:
