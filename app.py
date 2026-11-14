@@ -149,7 +149,7 @@ def add_formatted_runs_to_paragraph(p, text, font_size=11, default_bold=False):
             r.font.name = 'Times New Roman'
             r.font.size = Pt(font_size)
 
-# HÀM TẠO FILE DOCX CHUẨN THỂ THỨC (TIMES NEW ROMAN, CỠ 13PT, LỀ TRÁI 3CM, CÒN LẠI 2CM)
+# HÀM TẠO FILE DOCX CHUẨN THỂ THỨC PHIẾU CŨ (TIMES NEW ROMAN, CỠ 13PT, LỀ TRÁI 3CM, CÒN LẠI 2CM)
 def generate_docx_report(student_name, date_str, topic, essay_text, feedback_md, teacher_name="Cô Đỗ Thị Huyền"):
     doc = Document()
     for section in doc.sections:
@@ -310,7 +310,7 @@ def get_db_connection():
 
 SUPER_ADMIN_USERS = ["giaovien", "gv_binh"]
 
-# 3. Huấn luyện System Instruction chuẩn Barem 2.0 Bắc Ninh (Giữ nguyên cấu trúc 6 mục của Phiếu cũ)
+# 3. Huấn luyện System Instruction chuẩn Barem 2.0 Bắc Ninh (Giữ nguyên cấu trúc 6 mục Phiếu cũ, bỏ nội dung phạt trừ điểm)
 SYSTEM_INSTRUCTION = """
 ============================================================
 0. QUY TẮC BẮT BUỘC VỀ SỰ PHÙ HỢP CỦA CHỦ ĐỀ (OFF-TOPIC ZERO RULE):
@@ -331,7 +331,7 @@ SYSTEM_INSTRUCTION = """
 - Tại mục Đánh giá tổng quan và Bảng điểm, phải nêu rõ lý do: "Bài viết lạc đề / không trả lời đúng yêu cầu của đề bài (Off-topic). Điểm đánh giá: 0."
 
 ============================================================
-OFFICIAL BAC NINH 2.0-POINT DETAILED RUBRIC:
+OFFICIAL BAC NINH 2.0-POINT DETAILED RUBRIC (KHÔNG CÓ MỤC TRỪ ĐIỂM RIÊNG):
 1. Content (0.70 điểm - 35%):
 - a. Main ideas and details (0.35 điểm): Đưa ra quan điểm rõ ràng ngay từ mở bài; có ít nhất 2 luận điểm chính phát triển mạch lạc với ví dụ/giải thích cụ thể (0.30-0.35: đầy đủ sâu sắc; 0.20-0.25: đủ ý nhưng còn mỏng; 0.10-0.15: thiếu ý; 0.0: lạc đề).
 - b. Communicating intentions (0.35 điểm): Thể hiện lập trường xuyên suốt từ đầu đến kết luận mà không tự mâu thuẫn; lập luận thuyết phục (0.30-0.35: nhất quán cao; 0.20-0.25: đôi chỗ lỏng lẻo; 0.05-0.15: mâu thuẫn).
@@ -348,7 +348,7 @@ OFFICIAL BAC NINH 2.0-POINT DETAILED RUBRIC:
 - a. Punctuation & Spelling (0.05 điểm): Đúng chính tả, dấu phẩy sau trạng ngữ, dấu chấm, viết hoa đầu câu, không dùng từ viết tắt don't/isn't (0 lỗi: 0.05; 2-3 lỗi: 0.025; >3 lỗi: 0.0).
 - b. Formatting / Word Count (0.05 điểm): Độ dài đạt 220-280 từ (dung sai ±10% cho mức 250 từ) và trình bày chuẩn: 0.05 điểm; quá ngắn (<200 từ) hoặc quá dài (>320 từ): 0.025 điểm; dưới 150 từ: 0.0 điểm.
 
-- Quy tắc làm tròn & tính điểm: Tổng điểm bằng tổng 4 tiêu chí trên (làm tròn đến 2 chữ số thập phân, bước nhảy 0.05 hoặc 0.025). Khách quan, không tự suy diễn ý định học sinh chưa viết ra.
+- Quy tắc tính điểm: TỔNG ĐIỂM BÀI THI = Tổng 4 tiêu chí trên (làm tròn đến 2 chữ số thập phân, bước nhảy 0.05 hoặc 0.025). TUYỆT ĐỐI KHÔNG tạo mục hay dòng phạt trừ điểm riêng biệt.
 
 ============================================================
 QUY CHUẨN CHUYÊN MÔN & TEMPLATE TẬP HUẤN (CHUYÊN BẮC NINH & THCS THÂN NHÂN TRUNG):
@@ -371,7 +371,7 @@ Trong phần BÀI VIẾT MẪU THAM KHẢO (Mục 5), BẮT BUỘC sử dụng b
 - Ngay cả khi bài thi bị điểm 0 do Off-topic, VẪN BẮT BUỘC cung cấp đầy đủ 2 bài viết mẫu và 2 bảng từ vựng IPA.
 
 ============================================================
-REQUIRED OUTPUT FORMAT (GIỮ NGUYÊN CẤU TRÚC 6 MỤC CHUẨN):
+REQUIRED OUTPUT FORMAT (GIỮ NGUYÊN CẤU TRÚC 6 MỤC CỦA PHIẾU CŨ, KHÔNG CÓ DÒNG PHẠT TRỪ ĐIỂM):
 
 ### 1. 📋 ĐÁNH GIÁ TỔNG QUAN & PHÂN TÍCH NHẬN ĐỊNH CỦA ĐỀ
 - **Thể loại bài viết nhận diện:** [Opinion (Agree/Disagree) / Discussion / Cause-Solution / Advantages-Disadvantages]
@@ -381,7 +381,7 @@ REQUIRED OUTPUT FORMAT (GIỮ NGUYÊN CẤU TRÚC 6 MỤC CHUẨN):
 
 ### 2. 📊 BẢNG ĐIỂM CHÍNH THỨC SỞ GD&ĐT BẮC NINH (THANG 2.0)
 
-| Tiêu chí thành phần | Điểm tối đa | Điểm đạt | Nhận xét chi tiết của Giám khảo (Phân tích đủ 2 tiểu mục a & b) |
+| Tiêu chí thành phần | Điểm tối đa | Điểm đạt | Nhận xét chi tiết của Giám khảo |
 | :--- | :---: | :---: | :--- |
 | **1. Content** (Ý tưởng & Lập luận) | 0.70 | **...** | - **1a. Main ideas & details (.../0.35):** ...<br>- **1b. Communicating intentions (.../0.35):** ... |
 | **2. Organization** (Bố cục & Mạch lạc) | 0.60 | **...** | - **2a. Coherence, cohesion & clarity (.../0.30):** ...<br>- **2b. Well-structured composition (.../0.30):** ... |
