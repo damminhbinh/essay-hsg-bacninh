@@ -3,6 +3,7 @@ import psycopg2
 from psycopg2 import pool
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from decimal import Decimal, ROUND_HALF_UP
 import time
 from google import genai
 from google.genai import types
@@ -16,6 +17,19 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml import parse_xml
 from docx.oxml.ns import nsdecls
+
+# Hàm làm tròn chuẩn toán học Việt Nam (5 làm tròn lên, tránh lỗi làm tròn xuống của float Python)
+def round_vn(val, decimals=2):
+    d = Decimal(str(val))
+    fmt = "0." + "0" * decimals if decimals > 0 else "0"
+    return float(d.quantize(Decimal(fmt), rounding=ROUND_HALF_UP))
+
+def fmt_score(val):
+    # Hiển thị gọn: nếu tròn 2 chữ số (vd 0.450 -> 0.45), nếu lẻ phần nghìn (vd 0.425 -> 0.425)
+    r3 = round_vn(val, 3)
+    if round_vn(r3, 2) == r3:
+        return f"{r3:.2f}"
+    return f"{r3:.3f}"
 
 # Hàm lấy thời gian chuẩn múi giờ Việt Nam GMT+7
 def get_vn_time_str(fmt="%d/%m/%Y %H:%M"):
@@ -40,7 +54,7 @@ AUTHOR_INFO_MARKDOWN = """
 🏫 *Trường THCS Thân Nhân Trung - TP. Bắc Ninh*
 """
 
-# HÀM PYTHON TỰ BÓC TÁCH, TỰ CỘNG ĐIỂM CHÍNH XÁC 100% VÀ TỰ SỬA LẠI TỔNG ĐIỂM TRONG VĂN BẢN AI
+# HÀM PYTHON TỰ BÓC TÁCH MỌI ĐỊNH DẠNG BẢNG, TỰ CỘNG ĐIỂM CHUẨN & SỬA LẠI TỔNG ĐIỂM TRONG VĂN BẢN AI
 def parse_and_fix_feedback(text):
     s_content = 0.0
     s_org = 0.0
@@ -54,16 +68,26 @@ def parse_and_fix_feedback(text):
         return s_content, s_org, s_lang, s_mech, s_total, errors_str, fixed_text
         
     try:
-        clean_text = re.sub(r'[\*_`]', '', text)
+        clean_text = re.sub(r'[\*_`\[\]]', '', text)
 
-        # Chỉ bắt số đứng ngay trước dấu gạch chéo (ví dụ: 0.25/0.35 hoặc 0.25 / 0.35) để KHÔNG BAO GIỜ bắt nhầm số tối đa
         def extract_subscore(code, max_str):
-            pattern = rf'{code}\..*?([0-9.]+)\s*/\s*{max_str}'
-            m = re.search(pattern, clean_text, re.IGNORECASE)
-            if m:
-                val = float(m.group(1))
-                max_val = float(max_str)
-                return min(val, max_val)
+            # Kiểu 1: 1a. ... 0.225 / 0.35 hoặc (0.225/0.35)
+            p1 = rf'{code}\.[^\n|]*?([0-9.]+)\s*/\s*{max_str}'
+            m1 = re.search(p1, clean_text, re.IGNORECASE)
+            if m1:
+                return min(float(m1.group(1)), float(max_str))
+            
+            # Kiểu 2: Bảng 3 cột (như bài #153 của Trà): | 1a. Main Ideas & Details | 0.35 | 0.225 |
+            p2 = rf'\|\s*{code}\.[^|\n]*\|\s*{max_str}0?\s*\|\s*([0-9.]+)'
+            m2 = re.search(p2, clean_text, re.IGNORECASE)
+            if m2:
+                return min(float(m2.group(1)), float(max_str))
+                
+            # Kiểu 3: Dòng danh sách: 1a. Main Ideas & Details: 0.225
+            p3 = rf'{code}\.[^:\n|]*:\s*([0-9.]+)'
+            m3 = re.search(p3, clean_text, re.IGNORECASE)
+            if m3:
+                return min(float(m3.group(1)), float(max_str))
             return None
 
         s_1a = extract_subscore('1a', '0.35')
@@ -76,74 +100,76 @@ def parse_and_fix_feedback(text):
         s_4b = extract_subscore('4b', '0.05')
 
         # Bắt từ cột thứ 3 (Điểm đạt) của bảng 4 tiêu chí
-        m_c_tbl = re.search(r'\|\s*1\.\s*Content[^|]*\|\s*0\.70?\s*\|\s*([0-9.]+)\s*\|', clean_text, re.IGNORECASE)
-        m_o_tbl = re.search(r'\|\s*2\.\s*Organization[^|]*\|\s*0\.60?\s*\|\s*([0-9.]+)\s*\|', clean_text, re.IGNORECASE)
-        m_l_tbl = re.search(r'\|\s*3\.\s*Language[^|]*\|\s*0\.60?\s*\|\s*([0-9.]+)\s*\|', clean_text, re.IGNORECASE)
-        m_m_tbl = re.search(r'\|\s*4\.\s*(?:Mechanics|Punctuation)[^|]*\|\s*0\.10?\s*\|\s*([0-9.]+)\s*\|', clean_text, re.IGNORECASE)
+        m_c_tbl = re.search(r'\|\s*1\.\s*Content[^|\n]*\|\s*0\.70?\s*\|\s*([0-9.]+)', clean_text, re.IGNORECASE)
+        m_o_tbl = re.search(r'\|\s*2\.\s*Organization[^|\n]*\|\s*0\.60?\s*\|\s*([0-9.]+)', clean_text, re.IGNORECASE)
+        m_l_tbl = re.search(r'\|\s*3\.\s*Language[^|\n]*\|\s*0\.60?\s*\|\s*([0-9.]+)', clean_text, re.IGNORECASE)
+        m_m_tbl = re.search(r'\|\s*4\.\s*(?:Mechanics|Punctuation)[^|\n]*\|\s*0\.10?\s*\|\s*([0-9.]+)', clean_text, re.IGNORECASE)
 
         if s_1a is not None and s_1b is not None:
-            s_content = round(min(0.70, s_1a + s_1b), 3)
+            s_content = round_vn(min(0.70, s_1a + s_1b), 3)
         elif m_c_tbl:
-            s_content = round(min(0.70, float(m_c_tbl.group(1))), 3)
+            s_content = round_vn(min(0.70, float(m_c_tbl.group(1))), 3)
 
         if s_2a is not None and s_2b is not None:
-            s_org = round(min(0.60, s_2a + s_2b), 3)
+            s_org = round_vn(min(0.60, s_2a + s_2b), 3)
         elif m_o_tbl:
-            s_org = round(min(0.60, float(m_o_tbl.group(1))), 3)
+            s_org = round_vn(min(0.60, float(m_o_tbl.group(1))), 3)
 
         if s_3a is not None and s_3b is not None:
-            s_lang = round(min(0.60, s_3a + s_3b), 3)
+            s_lang = round_vn(min(0.60, s_3a + s_3b), 3)
         elif m_l_tbl:
-            s_lang = round(min(0.60, float(m_l_tbl.group(1))), 3)
+            s_lang = round_vn(min(0.60, float(m_l_tbl.group(1))), 3)
 
         if s_4a is not None and s_4b is not None:
-            s_mech = round(min(0.10, s_4a + s_4b), 3)
+            s_mech = round_vn(min(0.10, s_4a + s_4b), 3)
         elif m_m_tbl:
-            s_mech = round(min(0.10, float(m_m_tbl.group(1))), 3)
+            s_mech = round_vn(min(0.10, float(m_m_tbl.group(1))), 3)
 
-        # PYTHON TỰ CỘNG TỔNG ĐIỂM CHÍNH XÁC 100%
-        raw_sum = s_content + s_org + s_lang + s_mech
+        # PYTHON TỰ CỘNG TỔNG ĐIỂM CHÍNH XÁC 100% THEO QUY TẮC LÀM TRÒN CHUẨN (.xx5 LÀM TRÒN LÊN)
+        raw_sum = round_vn(s_content + s_org + s_lang + s_mech, 3)
         if raw_sum > 0:
-            s_total = round(min(2.00, raw_sum), 2)
+            s_total = round_vn(min(2.00, raw_sum), 2)
         else:
-            m_t = re.search(r'(?:TỔNG ĐIỂM BÀI THI.*?(?:2\.00|2\.0)\s*\|\s*|TOTAL SCORE\s*:\s*)([0-9.]+)', clean_text, re.IGNORECASE)
+            m_t = re.search(r'(?:TỔNG ĐIỂM BÀI THI|TOTAL SCORE)[^0-9\n]*?(?:2\.00?\s*\|\s*)?([0-9.]+)', clean_text, re.IGNORECASE)
             if m_t:
-                s_total = round(min(2.00, float(m_t.group(1))), 2)
+                s_total = round_vn(min(2.00, float(m_t.group(1))), 2)
 
         # TỰ ĐỘNG GHI ĐÈ ĐIỂM ĐÚNG CỦA PYTHON VÀO VĂN BẢN NHẬN XÉT ĐỂ HIỂN THỊ & XUẤT WORD KHỚP 100%
         if raw_sum > 0:
             fixed_text = re.sub(
-                r'(\|\s*\*{0,2}1\.\s*Content\*{0,2}[^|]*\|\s*0\.70?\s*\|\s*)\*{0,2}[0-9.]+\*{0,2}',
-                rf'\g<1>**{s_content:.2f}**',
+                r'(\|\s*\*{0,2}1\.\s*Content\*{0,2}[^|\n]*\|\s*0\.70?\s*\|\s*)\*{0,2}[0-9.]+\*{0,2}',
+                rf'\g<1>**{fmt_score(s_content)}**',
                 fixed_text,
                 flags=re.IGNORECASE
             )
             fixed_text = re.sub(
-                r'(\|\s*\*{0,2}2\.\s*Organization\*{0,2}[^|]*\|\s*0\.60?\s*\|\s*)\*{0,2}[0-9.]+\*{0,2}',
-                rf'\g<1>**{s_org:.2f}**',
+                r'(\|\s*\*{0,2}2\.\s*Organization\*{0,2}[^|\n]*\|\s*0\.60?\s*\|\s*)\*{0,2}[0-9.]+\*{0,2}',
+                rf'\g<1>**{fmt_score(s_org)}**',
                 fixed_text,
                 flags=re.IGNORECASE
             )
             fixed_text = re.sub(
-                r'(\|\s*\*{0,2}3\.\s*Language\*{0,2}[^|]*\|\s*0\.60?\s*\|\s*)\*{0,2}[0-9.]+\*{0,2}',
-                rf'\g<1>**{s_lang:.2f}**',
+                r'(\|\s*\*{0,2}3\.\s*Language\*{0,2}[^|\n]*\|\s*0\.60?\s*\|\s*)\*{0,2}[0-9.]+\*{0,2}',
+                rf'\g<1>**{fmt_score(s_lang)}**',
                 fixed_text,
                 flags=re.IGNORECASE
             )
             fixed_text = re.sub(
-                r'(\|\s*\*{0,2}4\.\s*(?:Mechanics|Punctuation)\*{0,2}[^|]*\|\s*0\.10?\s*\|\s*)\*{0,2}[0-9.]+\*{0,2}',
-                rf'\g<1>**{s_mech:.2f}**',
+                r'(\|\s*\*{0,2}4\.\s*(?:Mechanics|Punctuation)\*{0,2}[^|\n]*\|\s*0\.10?\s*\|\s*)\*{0,2}[0-9.]+\*{0,2}',
+                rf'\g<1>**{fmt_score(s_mech)}**',
                 fixed_text,
                 flags=re.IGNORECASE
             )
+            # Sửa dòng TỔNG ĐIỂM BÀI THI hoặc TOTAL SCORE nằm trong bảng 3 cột (như bài #153 của Trà)
             fixed_text = re.sub(
-                r'(\|\s*\*{0,2}TỔNG ĐIỂM BÀI THI\*{0,2}\s*\|\s*\*{0,2}2\.00?\*{0,2}\s*\|\s*)\*{0,2}[0-9.]+\s*(?:/\s*2\.00?)?\*{0,2}',
+                r'(\|\s*\*{0,2}(?:TỔNG ĐIỂM BÀI THI|TOTAL SCORE)\*{0,2}\s*\|\s*\*{0,2}2\.00?\*{0,2}\s*\|\s*)\*{0,2}[0-9.]+\s*(?:/\s*2\.00?)?\*{0,2}',
                 rf'\g<1>**{s_total:.2f} / 2.0**',
                 fixed_text,
                 flags=re.IGNORECASE
             )
+            # Sửa dòng TOTAL SCORE: X / 2.0 nằm ngoài bảng
             fixed_text = re.sub(
-                r'(\*{0,2}TOTAL SCORE:\*{0,2}\s*)\*{0,2}[0-9.]+\s*/\s*2\.00?\*{0,2}',
+                r'(\*{0,2}TOTAL SCORE\*{0,2}\s*:\s*)\*{0,2}[0-9.]+\s*(?:/\s*2\.00?)?\*{0,2}',
                 rf'\g<1>**{s_total:.2f} / 2.0**',
                 fixed_text,
                 flags=re.IGNORECASE
@@ -156,7 +182,7 @@ def parse_and_fix_feedback(text):
             cleaned_lines = [
                 re.sub(r'^[\s*\-0-9.)|]+', '', line).strip()
                 for line in raw_err.split('\n')
-                if line.strip() and not line.strip().startswith('|---') and not line.strip().lower().startswith('| lỗi gốc')
+                if line.strip() and not line.strip().startswith('|---') and not line.strip().lower().startswith('| lỗi gốc') and not line.strip().lower().startswith('lỗi gốc')
             ]
             if cleaned_lines:
                 errors_str = " | ".join(cleaned_lines[:3])
@@ -388,7 +414,22 @@ def get_db_connection():
     if not db_url:
         st.error("Chưa cấu hình biến DATABASE_URL trong Streamlit Secrets! Vui lòng cấu hình để tiếp tục.")
         st.stop()
-    return psycopg2.connect(db_url)
+    conn = psycopg2.connect(db_url)
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            ALTER TABLE submissions 
+            ALTER COLUMN score_content TYPE NUMERIC(5,3),
+            ALTER COLUMN score_org TYPE NUMERIC(5,3),
+            ALTER COLUMN score_lang TYPE NUMERIC(5,3),
+            ALTER COLUMN score_mech TYPE NUMERIC(5,3),
+            ALTER COLUMN score_total TYPE NUMERIC(5,2);
+        """)
+        conn.commit()
+        cur.close()
+    except Exception:
+        conn.rollback()
+    return conn
 
 SUPER_ADMIN_USERS = ["giaovien", "gv_binh"]
 
@@ -1122,7 +1163,7 @@ elif user["role"] == "teacher":
                             conn.commit()
 
                             success_count += 1
-                            st.write(f"✅ **Đã chấm xong ({idx+1}/{total_files}):** Thí sinh **{extracted_name}** — Điểm: **{stot}/2.0**")
+                            st.write(f"✅ **Đã chấm xong ({idx+1}/{total_files}):** Thí sinh **{extracted_name}** — Điểm: **{stot:.2f}/2.0**")
 
                         progress_bar.progress((idx + 1) / total_files)
 
