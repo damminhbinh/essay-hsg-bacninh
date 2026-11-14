@@ -53,32 +53,35 @@ def parse_scores_from_feedback(text):
         return s_content, s_org, s_lang, s_mech, s_total, errors_str
         
     try:
+        # Làm sạch các ký tự markdown thừa (*, _, `, [, ]) để regex bắt chính xác 100%
+        clean_text = re.sub(r'[\*_`\[\]]', '', text)
+
         def extract_val(pattern):
-            m = re.search(pattern, text, re.IGNORECASE)
+            m = re.search(pattern, clean_text, re.IGNORECASE)
             return float(m.group(1)) if m else 0.0
 
         # 1. Content (0.70 = 1a + 1b)
-        s_1a = extract_val(r'1a\.\s*Main Ideas\s*&\s*Details:\s*[\*_`]*([0-9.]+)')
-        s_1b = extract_val(r'1b\.\s*Communicating Intentions:\s*[\*_`]*([0-9.]+)')
+        s_1a = extract_val(r'1a\.\s*Main Ideas\s*(?:&|and)\s*Details\s*:\s*([0-9.]+)')
+        s_1b = extract_val(r'1b\.\s*Communicating Intentions\s*:\s*([0-9.]+)')
         s_content = round(s_1a + s_1b, 3)
 
         # 2. Organization (0.60 = 2a + 2b)
-        s_2a = extract_val(r'2a\.\s*Cohesion\s*&\s*Coherence:\s*[\*_`]*([0-9.]+)')
-        s_2b = extract_val(r'2b\.\s*Structural Composition:\s*[\*_`]*([0-9.]+)')
+        s_2a = extract_val(r'2a\.\s*Cohesion\s*(?:&|and)\s*Coherence\s*:\s*([0-9.]+)')
+        s_2b = extract_val(r'2b\.\s*Structural Composition\s*:\s*([0-9.]+)')
         s_org = round(s_2a + s_2b, 3)
 
         # 3. Language (0.60 = 3a + 3b)
-        s_3a = extract_val(r'3a\.\s*Vocabulary Range:\s*[\*_`]*([0-9.]+)')
-        s_3b = extract_val(r'3b\.\s*Grammatical Control:\s*[\*_`]*([0-9.]+)')
+        s_3a = extract_val(r'3a\.\s*Vocabulary Range\s*:\s*([0-9.]+)')
+        s_3b = extract_val(r'3b\.\s*Grammatical Control\s*:\s*([0-9.]+)')
         s_lang = round(s_3a + s_3b, 3)
 
         # 4. Punctuation, Spelling & Word Count (0.10 = 4a + 4b)
-        s_4a = extract_val(r'4a\.\s*Spelling\s*&\s*Punctuation:\s*[\*_`]*([0-9.]+)')
-        s_4b = extract_val(r'4b\.\s*Word Count\s*&\s*Presentation:\s*[\*_`]*([0-9.]+)')
+        s_4a = extract_val(r'4a\.\s*Spelling\s*(?:&|and)\s*Punctuation\s*:\s*([0-9.]+)')
+        s_4b = extract_val(r'4b\.\s*Word Count\s*(?:&|and)\s*Presentation\s*:\s*([0-9.]+)')
         s_mech = round(s_4a + s_4b, 3)
 
         # Tổng điểm (ưu tiên lấy từ TOTAL SCORE, nếu không có thì cộng 4 nhóm)
-        m_t = re.search(r'TOTAL SCORE:\s*[\*_`]*([0-9.]+)\s*/\s*2\.0', text, re.IGNORECASE)
+        m_t = re.search(r'TOTAL SCORE\s*:\s*([0-9.]+)\s*/\s*2(?:\.0+)?', clean_text, re.IGNORECASE)
         if m_t:
             s_total = round(float(m_t.group(1)), 2)
         else:
@@ -326,6 +329,7 @@ SYSTEM_INSTRUCTION = """
 ============================================================
 0. QUY TẮC BẮT BUỘC VỀ SỰ PHÙ HỢP CỦA CHỦ ĐỀ (OFF-TOPIC ZERO RULE):
 - Trước khi chấm, kiểm tra mức độ liên quan giữa bài viết của học sinh và yêu cầu của đề bài.
+- Lưu ý khi chấm ảnh chụp bài viết tay: Phải cố gắng đọc toàn bộ nội dung chữ viết tay của thí sinh; chỉ áp dụng điểm 0 khi nội dung thực sự hoàn toàn không liên quan đến đề bài.
 - Nếu bài viết lạc đề hoàn toàn, chép lại đề/văn mẫu không ăn nhập, hoặc trả lời sai chủ đề trọng tâm:
   + Đặt TẤT CẢ 8 tiêu chí thành phần và TOTAL SCORE = 0.0 / 2.0.
   + Nêu rõ lý do: "Bài viết lạc đề / không trả lời đúng yêu cầu của đề bài (Off-topic). Điểm đánh giá: 0."
