@@ -788,7 +788,28 @@ elif user["role"] == "teacher":
     
     # TAB 1: BẢNG ĐIỂM EXCEL & TỔNG HỢP
     with t_tab1:
-        st.markdown(f"### 📊 Báo cáo kết quả & Xuất Bảng điểm Excel của lớp")
+        col_title, col_sync = st.columns([3, 1])
+        with col_title:
+            st.markdown(f"### 📊 Báo cáo kết quả & Xuất Bảng điểm Excel của lớp")
+        with col_sync:
+            st.write("")
+            if st.button("🔄 Đồng bộ lại điểm từ nhận xét cũ", use_container_width=True):
+                c.execute("SELECT id, feedback FROM submissions")
+                all_old_rows = c.fetchall()
+                updated_cnt = 0
+                for r_id, fb_text in all_old_rows:
+                    if fb_text:
+                        sc, so, sl, sm, stot, serr = parse_scores_from_feedback(fb_text)
+                        if stot > 0:
+                            c.execute('''
+                                UPDATE submissions
+                                SET score_content = %s, score_org = %s, score_lang = %s, score_mech = %s, score_total = %s, identified_errors = %s
+                                WHERE id = %s
+                            ''', (sc, so, sl, sm, stot, serr, r_id))
+                            updated_cnt += 1
+                conn.commit()
+                st.success(f"Đã cập nhật đồng bộ lại điểm cho {updated_cnt} bài!")
+                st.rerun()
         
         if is_super_admin:
             c.execute('SELECT DISTINCT topic FROM submissions ORDER BY topic ASC')
